@@ -1,0 +1,18 @@
+{
+  "name": "astrohp",
+  "version": "0.0.1",
+  "description": "Astro with PHP-style routing",
+  "license": "MIT",
+  "author": "Guangcong Luo <guangcongluo@gmail.com> (http://guangcongluo.com)",
+  "type": "commonjs",
+  "main": "index.js",
+  "directories": {
+    "example": "example"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "dependencies": {
+    "astro": "^7.1.5"
+  }
+}
