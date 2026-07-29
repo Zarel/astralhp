@@ -1,5 +1,6 @@
 ---
+export const prerender = true;
 const message = "Hello World";
 ---
 <img src="square.png" />
-<strong>{message}</strong>
+<strong>{message} {Math.random()}</strong>

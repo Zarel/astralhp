@@ -1,7 +1,9 @@
+import { buildSite } from "./build.ts";
 import { startDev } from "./dev-server.ts";
+import { startLive } from "./live-server.ts";
 
 function usage() {
-	return "Usage: astrohp dev [directory]";
+	return "Usage: astrohp <dev|build|start> [directory]";
 }
 
 async function main(argv: string[]) {
@@ -10,10 +12,22 @@ async function main(argv: string[]) {
 		console.log(usage());
 		return;
 	}
-	if (command !== "dev" || extra.length) {
+	if (extra.length) {
 		throw new Error(usage());
 	}
-	await startDev(directory);
+	switch (command) {
+		case "dev":
+			await startDev(directory);
+			break;
+		case "build":
+			await buildSite(directory);
+			break;
+		case "start":
+			await startLive(directory);
+			break;
+		default:
+			throw new Error(usage());
+	}
 }
 
 main(process.argv.slice(2)).catch(error => {
