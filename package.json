@@ -8,6 +8,13 @@
 	"bin": {
 		"astrohp": "astrohp"
 	},
+	"exports": {
+		"./components": "./src/components/index.js"
+	},
+	"files": [
+		"astrohp",
+		"src"
+	],
 	"scripts": {
 		"test": "npm run typecheck && node --test",
 		"typecheck": "tsc"

@@ -26,6 +26,38 @@ the webroot. It never copies the webroot's static files.
 The live server listens on `127.0.0.1:4321` by default. Set the `HOST` or
 `PORT` environment variables to override either value.
 
+## Components
+
+AstroHP supports the usual ways to include CSS and JS, but if you would
+prefer a more PHP-style approach, we offer a `<CSS>` component that
+cachebusts a stylesheet while leaving it unmodified and in the same
+location.
+
+```astro
+---
+import { CSS } from "astrohp/components";
+---
+<CSS src="/style.css" />
+```
+
+`<CSS>` renders a `<link rel="stylesheet">`, forwards additional link
+attributes, and appends the local file's modification time encoded in base 36:
+
+```html
+<link rel="stylesheet" href="/style.css?loyw3v28">
+```
+
+The source can be root-relative or relative to the rendered page:
+
+```astro
+<CSS src="/style/global.css" />
+<CSS src="style.css" />
+<CSS src="../shared.css" />
+```
+
+The resolved file must be inside the webroot. Missing files, existing queries,
+fragments, and external URLs are errors.
+
 ## Cache directories
 
 AstroHP searches upward from the web root for the nearest `package.json`.

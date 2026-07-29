@@ -208,6 +208,9 @@ export function astroConfig(root: string): AstroInlineConfig {
 		vite: {
 			root: paths.webroot,
 			cacheDir: paths.vite,
+			define: {
+				"import.meta.env.ASTROHP_WEBROOT": JSON.stringify(paths.webroot),
+			},
 			plugins: [outsideRootEntrypoint(paths)],
 		},
 	};

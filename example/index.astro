@@ -1,6 +1,9 @@
 ---
+import { CSS } from "astrohp/components";
+
 export const prerender = true;
 const message = "Hello World";
 ---
+<CSS src="style.css" />
 <img src="square.png" />
 <strong>{message} {Math.random()}</strong>

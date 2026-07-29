@@ -1,0 +1,12 @@
+---
+import type { HTMLAttributes } from "astro/types";
+import { cachebust } from "../cachebuster.ts";
+
+type Props = Omit<HTMLAttributes<"link">, "href" | "rel"> & {
+	src: string;
+};
+
+const { src, ...attributes } = Astro.props;
+const href = cachebust(import.meta.env.ASTROHP_WEBROOT, src, Astro.url);
+---
+<link {...attributes} rel="stylesheet" href={href} />
