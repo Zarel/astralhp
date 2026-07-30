@@ -119,15 +119,14 @@ export function getWebrootPaths(root: string): WebrootPaths {
 	};
 }
 
-export function resolveStaticFile(
+export function resolveWebrootFile(
 	root: string,
 	requestUrl: string | undefined,
 ): string | null {
 	const parts = requestPathParts(requestUrl);
 	if (
 		parts === null || !parts.length || hasPrivateDirectory(parts) ||
-		parts.some(part => part.startsWith(".")) ||
-		path.extname(parts.at(-1)!).toLowerCase() === ".astro"
+		parts.some(part => part.startsWith("."))
 	) {
 		return null;
 	}
@@ -136,6 +135,20 @@ export function resolveStaticFile(
 	if (!filename) return null;
 	const relativeFilename = path.relative(fs.realpathSync(root), filename);
 	return hasPrivateDirectory(relativeFilename.split(path.sep)) ? null : filename;
+}
+
+export function resolveStaticFile(
+	root: string,
+	requestUrl: string | undefined,
+): string | null {
+	const filename = resolveWebrootFile(root, requestUrl);
+	if (
+		!filename ||
+		[".astro", ".ts", ".tsx"].includes(path.extname(filename).toLowerCase())
+	) {
+		return null;
+	}
+	return filename;
 }
 
 export function resolveBuiltFile(

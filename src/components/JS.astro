@@ -1,0 +1,16 @@
+---
+import type { HTMLAttributes } from "astro/types";
+import { cachebustScript } from "../cachebuster.ts";
+
+type Props = Omit<HTMLAttributes<"script">, "src"> & {
+	src: string;
+};
+
+const { src, ...attributes } = Astro.props;
+const resolvedSrc = cachebustScript(
+	import.meta.env.ASTROHP_WEBROOT,
+	src,
+	Astro.url,
+);
+---
+<script is:inline {...attributes} src={resolvedSrc}></script>

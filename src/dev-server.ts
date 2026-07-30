@@ -1,8 +1,33 @@
 import fs from "node:fs";
 import type * as vite from "vite";
+import { babelWatcher, compileScripts } from "./babel.ts";
 import { astroConfig, contentType, getWebrootPaths, isPrivateRequest, resolveStaticFile } from "./webroot.ts";
 
-export function staticFiles(root: string): vite.Plugin {
+function isCompiledScriptRequest(requestUrl: string | undefined): boolean {
+	if (!requestUrl) return false;
+	try {
+		return /\.js(?:\.map)?$/i.test(
+			new URL(requestUrl, "http://astrohp.local").pathname,
+		);
+	} catch {
+		return false;
+	}
+}
+
+function isSourceRequest(requestUrl: string | undefined): boolean {
+	if (!requestUrl) return false;
+	try {
+		return /\.tsx?$/i.test(
+			new URL(requestUrl, "http://astrohp.local").pathname,
+		);
+	} catch {
+		return false;
+	}
+}
+
+export function staticFiles(
+	paths: ReturnType<typeof getWebrootPaths>,
+): vite.Plugin {
 	return {
 		name: "astrohp:static-files",
 		enforce: "pre",
@@ -14,8 +39,16 @@ export function staticFiles(root: string): vite.Plugin {
 					return;
 				}
 				if (request.method !== "GET" && request.method !== "HEAD") return next();
+				if (isSourceRequest(request.url)) {
+					response.statusCode = 404;
+					response.end();
+					return;
+				}
 
-				const filename = resolveStaticFile(root, request.url);
+				const filename = (
+					isCompiledScriptRequest(request.url) &&
+					resolveStaticFile(paths.build, request.url)
+				) || resolveStaticFile(paths.webroot, request.url);
 				if (!filename) return next();
 
 				response.statusCode = 200;
@@ -35,13 +68,18 @@ export function staticFiles(root: string): vite.Plugin {
 export async function startDev(root = process.cwd()) {
 	process.env.ASTRO_TELEMETRY_DISABLED ||= "1";
 	const paths = getWebrootPaths(root);
+	await compileScripts(paths);
 	const config = astroConfig(root);
 	const { dev } = await import("astro");
 	return dev({
 		...config,
 		vite: {
 			...config.vite,
-			plugins: [...(config.vite?.plugins || []), staticFiles(paths.webroot)],
+			plugins: [
+				...(config.vite?.plugins || []),
+				babelWatcher(paths),
+				staticFiles(paths),
+			],
 		},
 	});
 }
