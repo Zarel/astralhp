@@ -2,21 +2,7 @@ import type { AstroInlineConfig, AstroIntegration } from "astro";
 import fs from "node:fs";
 import path from "node:path";
 import type * as vite from "vite";
-
-const MIME_TYPES: Readonly<Record<string, string>> = {
-	".css": "text/css; charset=utf-8",
-	".gif": "image/gif",
-	".html": "text/html; charset=utf-8",
-	".ico": "image/x-icon",
-	".jpeg": "image/jpeg",
-	".jpg": "image/jpeg",
-	".js": "text/javascript; charset=utf-8",
-	".json": "application/json; charset=utf-8",
-	".png": "image/png",
-	".svg": "image/svg+xml",
-	".txt": "text/plain; charset=utf-8",
-	".webp": "image/webp",
-};
+export { contentType } from "./mime.ts";
 
 const PRIVATE_DIRECTORIES = new Set(["caches", "node_modules"]);
 
@@ -74,12 +60,6 @@ function resolveContainedFile(root: string, parts: string[]): string | null {
 	} catch {
 		return null;
 	}
-}
-
-export function contentType(filename: string): string {
-	return (
-		MIME_TYPES[path.extname(filename).toLowerCase()] || "application/octet-stream"
-	);
 }
 
 export function isPrivateRequest(requestUrl: string | undefined): boolean {
