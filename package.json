@@ -9,6 +9,7 @@
 		"astrohp": "astrohp"
 	},
 	"exports": {
+		".": "./src/config.d.ts",
 		"./components": "./src/components/index.js"
 	},
 	"files": [

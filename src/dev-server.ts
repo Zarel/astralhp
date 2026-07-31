@@ -4,6 +4,10 @@ import { babelWatcher, compileScripts } from "./babel.ts";
 import { contentType } from "./mime.ts";
 import { astroConfig, getWebrootPaths, isPrivateRequest, resolveStaticFile } from "./webroot.ts";
 
+export interface DevServerOptions {
+	port?: number;
+}
+
 function isCompiledScriptRequest(requestUrl: string | undefined): boolean {
 	if (!requestUrl) return false;
 	try {
@@ -66,7 +70,10 @@ export function staticFiles(
 	};
 }
 
-export async function startDev(root = process.cwd()) {
+export async function startDev(
+	root = process.cwd(),
+	options: DevServerOptions = {},
+) {
 	process.env.ASTRO_TELEMETRY_DISABLED ||= "1";
 	const paths = getWebrootPaths(root);
 	await compileScripts(paths);
@@ -74,6 +81,10 @@ export async function startDev(root = process.cwd()) {
 	const { dev } = await import("astro");
 	return dev({
 		...config,
+		server: {
+			...config.server,
+			...(options.port === undefined ? {} : { port: options.port }),
+		},
 		vite: {
 			...config.vite,
 			plugins: [

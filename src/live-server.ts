@@ -9,9 +9,9 @@ export interface LiveServerOptions {
 	port?: number;
 }
 
-export function serverPort(): number {
+export function serverPort(defaultPort = 4321): number {
 	const value = process.env.PORT;
-	if (value === undefined) return 4321;
+	if (value === undefined) return defaultPort;
 
 	const port = Number(value);
 	if (!Number.isInteger(port) || port < 0 || port > 65535) {
