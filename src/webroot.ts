@@ -1,19 +1,34 @@
-import type { AstroInlineConfig, AstroIntegration } from "astro";
+import type * as astro from "astro";
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import type * as vite from "vite";
-export { contentType } from "./mime.ts";
 
-const PRIVATE_DIRECTORIES = new Set(["caches", "node_modules"]);
+const PRIVATE_DIRECTORIES = new Set([".caches", "node_modules"]);
 
 export interface WebrootPaths {
 	webroot: string;
 	astroRoot: string;
 	astro: string;
 	vite: string;
-	build: string;
+	dist: string;
+	nextDist: string;
+	previousDist: string;
 	public: string;
-	index: string;
+}
+
+export interface AstrohpPage {
+	pattern: string;
+	entrypoint: string;
+}
+
+export interface AstrohpResolvedRoutes {
+	routes: astro.IntegrationResolvedRoute[];
+	trailingSlash: astro.AstroConfig["trailingSlash"];
+}
+
+export interface AstrohpConfigOptions {
+	onRoutesResolved?: (resolved: AstrohpResolvedRoutes) => void;
 }
 
 function requestPathParts(requestUrl: string | undefined): string[] | null {
@@ -67,36 +82,56 @@ export function isPrivateRequest(requestUrl: string | undefined): boolean {
 	return parts === null || hasPrivateDirectory(parts);
 }
 
-export function findPackageRoot(root: string): string | null {
-	let current = path.resolve(root);
-	while (true) {
-		try {
-			if (fs.statSync(path.join(current, "package.json")).isFile()) return current;
-		} catch {}
-
-		const parent = path.dirname(current);
-		if (parent === current) return null;
-		current = parent;
-	}
-}
-
 export function getWebrootPaths(root: string): WebrootPaths {
 	const webroot = path.resolve(root);
-	const packageRoot = findPackageRoot(webroot);
-	const cacheRoot = packageRoot || webroot;
-	const relativeRoot = packageRoot ? path.relative(packageRoot, webroot) : "";
-	const webrootCache = path.join(cacheRoot, "caches", relativeRoot || "_root");
-	const astro = path.join(webrootCache, ".astro");
+	const astroRoot = path.join(webroot, ".caches");
+	const astro = path.join(astroRoot, ".astro");
 
 	return {
 		webroot,
-		astroRoot: webrootCache,
+		astroRoot,
 		astro,
 		vite: path.join(astro, "vite"),
-		build: path.join(webrootCache, "build"),
+		dist: path.join(astroRoot, "dist"),
+		nextDist: path.join(astroRoot, "next-dist"),
+		previousDist: path.join(astroRoot, "previous-dist"),
 		public: path.join(astro, "public"),
-		index: path.join(webroot, "index.astro"),
 	};
+}
+
+export function scanAstroPages(root: string): AstrohpPage[] {
+	const webroot = path.resolve(root);
+	const pages: AstrohpPage[] = [];
+	const patterns = new Map<string, string>();
+
+	function scan(directory: string): void {
+		for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+			if (entry.name.startsWith(".")) continue;
+			const filename = path.join(directory, entry.name);
+			if (entry.isDirectory()) {
+				if (!PRIVATE_DIRECTORIES.has(entry.name.toLowerCase())) scan(filename);
+				continue;
+			}
+			if (!entry.isFile() || !entry.name.endsWith(".astro")) continue;
+
+			const relative = path.relative(webroot, filename);
+			const segments = relative.split(path.sep);
+			const basename = segments.pop()!.slice(0, -".astro".length);
+			if (basename !== "index") segments.push(basename);
+			const pattern = `/${segments.join("/")}`;
+			const conflict = patterns.get(pattern);
+			if (conflict) {
+				throw new Error(
+					`Astro pages ${conflict} and ${filename} both map to ${pattern}`,
+				);
+			}
+			patterns.set(pattern, filename);
+			pages.push({ pattern, entrypoint: filename });
+		}
+	}
+
+	scan(webroot);
+	return pages.sort((a, b) => a.pattern.localeCompare(b.pattern));
 }
 
 export function resolveWebrootFile(
@@ -131,8 +166,16 @@ export function resolveStaticFile(
 	return filename;
 }
 
-export function resolveBuiltFile(
-	buildRoot: string,
+function canonicalPath(filename: string): string {
+	try {
+		return fs.realpathSync.native(path.resolve(filename));
+	} catch {
+		return path.resolve(filename);
+	}
+}
+
+export function resolveDistFile(
+	distRoot: string,
 	requestUrl: string | undefined,
 ): string | null {
 	const parts = requestPathParts(requestUrl);
@@ -148,46 +191,78 @@ export function resolveBuiltFile(
 		];
 
 	for (const candidate of candidates) {
-		const filename = resolveContainedFile(path.resolve(buildRoot), candidate);
+		const filename = resolveContainedFile(path.resolve(distRoot), candidate);
 		if (filename) return filename;
 	}
 	return null;
 }
 
-export function astrohpIntegration(indexFile: string): AstroIntegration {
+export function astrohpIntegration(
+	pages: AstrohpPage[],
+	options: AstrohpConfigOptions = {},
+): astro.AstroIntegration {
+	const entrypoints = new Set(
+		pages.map(page => canonicalPath(page.entrypoint)),
+	);
+	let trailingSlash: astro.AstroConfig["trailingSlash"] = "ignore";
+
 	return {
 		name: "astrohp",
 		hooks: {
 			"astro:config:setup"({ injectRoute }) {
-				injectRoute({
-					pattern: "/",
-					entrypoint: indexFile,
+				for (const page of pages) injectRoute(page);
+			},
+			"astro:config:done"({ config }) {
+				trailingSlash = config.trailingSlash;
+			},
+			"astro:routes:resolved"({ routes }) {
+				if (!options.onRoutesResolved) return;
+				options.onRoutesResolved({
+					routes: routes.filter(route => entrypoints.has(canonicalPath(route.entrypoint))),
+					trailingSlash,
 				});
 			},
 		},
 	};
 }
 
-function outsideRootEntrypoint(paths: WebrootPaths): vite.Plugin {
-	const relativeEntrypoint = path
-		.relative(paths.astroRoot, paths.index)
-		.split(path.sep)
-		.join("/");
-	const buildImport = `/${relativeEntrypoint}`;
+function outsideRootEntrypoints(
+	paths: WebrootPaths,
+	pages: AstrohpPage[],
+): vite.Plugin {
+	const compilerRuntime = fileURLToPath(
+		import.meta.resolve("astro/compiler-runtime"),
+	);
+	const components = fileURLToPath(import.meta.resolve("astrohp/components"));
+	const entrypoints = new Map(
+		pages.map(page => {
+			const relative = path
+				.relative(paths.astroRoot, page.entrypoint)
+				.split(path.sep)
+				.join("/");
+			return [`/${relative}`, page.entrypoint];
+		}),
+	);
 
 	return {
-		name: "astrohp:outside-root-entrypoint",
+		name: "astrohp:outside-root-entrypoints",
 		enforce: "pre",
 		resolveId(source) {
-			return source === buildImport ? paths.index : null;
+			if (source === "astro/compiler-runtime") return compilerRuntime;
+			if (source === "astrohp/components") return components;
+			return entrypoints.get(source) ?? null;
 		},
 	};
 }
 
-export function astroConfig(root: string): AstroInlineConfig {
+export function astroConfig(
+	root: string,
+	options: AstrohpConfigOptions = {},
+): astro.AstroInlineConfig {
 	const paths = getWebrootPaths(root);
-	if (!fs.existsSync(paths.index)) {
-		throw new Error(`No index.astro found in ${paths.webroot}`);
+	const pages = scanAstroPages(paths.webroot);
+	if (!pages.length) {
+		throw new Error(`No .astro pages found in ${paths.webroot}`);
 	}
 
 	return {
@@ -197,14 +272,19 @@ export function astroConfig(root: string): AstroInlineConfig {
 		devToolbar: {
 			enabled: false,
 		},
-		integrations: [astrohpIntegration(paths.index)],
+		integrations: [astrohpIntegration(pages, options)],
 		vite: {
 			root: paths.webroot,
 			cacheDir: paths.vite,
+			server: {
+				watch: {
+					ignored: ["**/.caches/**"],
+				},
+			},
 			define: {
 				"import.meta.env.ASTROHP_WEBROOT": JSON.stringify(paths.webroot),
 			},
-			plugins: [outsideRootEntrypoint(paths)],
+			plugins: [outsideRootEntrypoints(paths, pages)],
 		},
 	};
 }

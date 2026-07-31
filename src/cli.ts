@@ -1,9 +1,10 @@
+import { generateApacheConfig } from "./apache.ts";
 import { buildSite } from "./build.ts";
 import { startDev } from "./dev-server.ts";
 import { startLive } from "./live-server.ts";
 
 function usage() {
-	return "Usage: astrohp <dev|build|start> [directory]";
+	return "Usage: astrohp <dev|build|start|apache-proxy> [directory]";
 }
 
 async function main(argv: string[]) {
@@ -24,6 +25,10 @@ async function main(argv: string[]) {
 			break;
 		case "start":
 			await startLive(directory);
+			break;
+		case "apache-proxy":
+			await buildSite(directory);
+			console.log(await generateApacheConfig(directory));
 			break;
 		default:
 			throw new Error(usage());

@@ -1,14 +1,15 @@
 import fs from "node:fs";
 import http from "node:http";
 import type { AddressInfo } from "node:net";
-import { contentType, getWebrootPaths, isPrivateRequest, resolveBuiltFile, resolveStaticFile } from "./webroot.ts";
+import { contentType } from "./mime.ts";
+import { getWebrootPaths, isPrivateRequest, resolveDistFile, resolveStaticFile } from "./webroot.ts";
 
 export interface LiveServerOptions {
 	host?: string;
 	port?: number;
 }
 
-function defaultPort(): number {
+export function serverPort(): number {
 	const value = process.env.PORT;
 	if (value === undefined) return 4321;
 
@@ -47,7 +48,7 @@ export async function startLive(
 	options: LiveServerOptions = {},
 ): Promise<http.Server> {
 	const paths = getWebrootPaths(root);
-	if (!fs.existsSync(paths.build)) {
+	if (!fs.existsSync(paths.dist)) {
 		throw new Error(`No build found. Run "astrohp build ${paths.webroot}" first.`);
 	}
 
@@ -64,7 +65,7 @@ export async function startLive(
 			return;
 		}
 
-		const filename = resolveBuiltFile(paths.build, request.url) ||
+		const filename = resolveDistFile(paths.dist, request.url) ||
 			resolveStaticFile(paths.webroot, request.url);
 		if (filename) {
 			sendFile(request, response, filename);
@@ -77,7 +78,7 @@ export async function startLive(
 	});
 
 	const host = options.host ?? process.env.HOST ?? "127.0.0.1";
-	const port = options.port ?? defaultPort();
+	const port = options.port ?? serverPort();
 	await new Promise<void>((resolve, reject) => {
 		server.once("error", reject);
 		server.listen(port, host, () => {

@@ -1,7 +1,8 @@
 import fs from "node:fs";
 import type * as vite from "vite";
 import { babelWatcher, compileScripts } from "./babel.ts";
-import { astroConfig, contentType, getWebrootPaths, isPrivateRequest, resolveStaticFile } from "./webroot.ts";
+import { contentType } from "./mime.ts";
+import { astroConfig, getWebrootPaths, isPrivateRequest, resolveStaticFile } from "./webroot.ts";
 
 function isCompiledScriptRequest(requestUrl: string | undefined): boolean {
 	if (!requestUrl) return false;
@@ -47,7 +48,7 @@ export function staticFiles(
 
 				const filename = (
 					isCompiledScriptRequest(request.url) &&
-					resolveStaticFile(paths.build, request.url)
+					resolveStaticFile(paths.dist, request.url)
 				) || resolveStaticFile(paths.webroot, request.url);
 				if (!filename) return next();
 
@@ -84,10 +85,4 @@ export async function startDev(root = process.cwd()) {
 	});
 }
 
-export {
-	astrohpIntegration,
-	findPackageRoot,
-	getWebrootPaths,
-	isPrivateRequest,
-	resolveStaticFile,
-} from "./webroot.ts";
+export { astrohpIntegration, getWebrootPaths, isPrivateRequest, resolveStaticFile } from "./webroot.ts";

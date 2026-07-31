@@ -5,7 +5,7 @@ import type * as vite from "vite";
 import type { WebrootPaths } from "./webroot.ts";
 
 const ASTROHP_ROOT = path.resolve(import.meta.dirname, "..");
-const PRIVATE_DIRECTORIES = new Set(["caches", "node_modules"]);
+const PRIVATE_DIRECTORIES = new Set(["node_modules"]);
 
 const SHOWDOWN_BABEL_OPTIONS: babel.TransformOptions = {
 	babelrc: false,
@@ -59,7 +59,7 @@ export function isBabelSource(filename: string): boolean {
 
 export function scriptOutputPath(
 	webroot: string,
-	buildRoot: string,
+	distRoot: string,
 	source: string,
 ): string {
 	const relative = path.relative(webroot, source);
@@ -69,7 +69,7 @@ export function scriptOutputPath(
 	) {
 		throw new Error(`Not a TypeScript source in the webroot: ${source}`);
 	}
-	return path.join(buildRoot, relative.replace(/\.tsx?$/, ".js"));
+	return path.join(distRoot, relative.replace(/\.tsx?$/, ".js"));
 }
 
 export function scanBabelSources(webroot: string): string[] {
@@ -118,10 +118,10 @@ function writeCompiledFile(
 }
 
 export async function compileScript(
-	paths: Pick<WebrootPaths, "webroot" | "build">,
+	paths: Pick<WebrootPaths, "webroot" | "dist">,
 	source: string,
 ): Promise<string | null> {
-	const output = scriptOutputPath(paths.webroot, paths.build, source);
+	const output = scriptOutputPath(paths.webroot, paths.dist, source);
 
 	const result = await babel.transformFileAsync(source, {
 		...SHOWDOWN_BABEL_OPTIONS,
@@ -142,7 +142,7 @@ export async function compileScript(
 }
 
 export async function compileScripts(
-	paths: Pick<WebrootPaths, "webroot" | "build">,
+	paths: Pick<WebrootPaths, "webroot" | "dist">,
 ): Promise<string[]> {
 	const sources = scanBabelSources(paths.webroot);
 	if (!sources.length) return [];
@@ -154,10 +154,10 @@ export async function compileScripts(
 }
 
 function removeCompiledScript(
-	paths: Pick<WebrootPaths, "webroot" | "build">,
+	paths: Pick<WebrootPaths, "webroot" | "dist">,
 	source: string,
 ): void {
-	const output = scriptOutputPath(paths.webroot, paths.build, source);
+	const output = scriptOutputPath(paths.webroot, paths.dist, source);
 	fs.rmSync(output, { force: true });
 	fs.rmSync(`${output}.map`, { force: true });
 }
