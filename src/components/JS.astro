@@ -1,6 +1,7 @@
 ---
 import type { HTMLAttributes } from "astro/types";
 import { cachebustScript } from "../cachebuster.ts";
+import { Webroot } from "../webroot.ts";
 
 type Props = Omit<HTMLAttributes<"script">, "src"> & {
 	src: string;
@@ -8,7 +9,7 @@ type Props = Omit<HTMLAttributes<"script">, "src"> & {
 
 const { src, ...attributes } = Astro.props;
 const resolvedSrc = cachebustScript(
-	import.meta.env.ASTROHP_WEBROOT,
+	new Webroot({ webroot: import.meta.env.ASTROHP_WEBROOT }),
 	src,
 	Astro.url,
 );

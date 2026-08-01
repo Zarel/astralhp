@@ -1,10 +1,10 @@
 import fs from "node:fs";
 import path from "node:path";
 import { compileScripts } from "./babel.ts";
-import { astroConfig, getWebrootPaths, type WebrootPaths } from "./webroot.ts";
+import { Webroot } from "./webroot.ts";
 
 type DistPaths = Pick<
-	WebrootPaths,
+	Webroot,
 	"dist" | "nextDist" | "previousDist"
 >;
 
@@ -49,25 +49,22 @@ export function publishDist(paths: DistPaths): void {
 	removeDirectory(paths.previousDist);
 }
 
-export async function buildSite(root = process.cwd()): Promise<string> {
+export async function buildSite(webroot: Webroot): Promise<string> {
 	process.env.ASTRO_TELEMETRY_DISABLED ||= "1";
-	const paths = getWebrootPaths(root);
-	const config = astroConfig(paths.webroot);
+	const config = webroot.astroConfig();
 	const { build } = await import("astro");
-	if (!fs.existsSync(paths.dist) && fs.existsSync(paths.previousDist)) {
-		fs.renameSync(paths.previousDist, paths.dist);
+	if (!fs.existsSync(webroot.dist) && fs.existsSync(webroot.previousDist)) {
+		fs.renameSync(webroot.previousDist, webroot.dist);
 	}
-	removeDirectory(paths.nextDist);
+	removeDirectory(webroot.nextDist);
 
 	const fallbackAstro = path.resolve(".astro");
-	const cleanupFallback = (
-		fallbackAstro !== paths.astro &&
-		!fs.existsSync(fallbackAstro)
-	);
+	const cleanupFallback = fallbackAstro !== webroot.astroCache &&
+		!fs.existsSync(fallbackAstro);
 	try {
 		await build({
 			...config,
-			outDir: paths.nextDist,
+			outDir: webroot.nextDist,
 			build: {
 				format: "preserve",
 			},
@@ -75,13 +72,13 @@ export async function buildSite(root = process.cwd()): Promise<string> {
 	} finally {
 		if (cleanupFallback) removeEmptyDirectory(fallbackAstro);
 	}
-	await compileScripts({ webroot: paths.webroot, dist: paths.nextDist });
+	await compileScripts(webroot, webroot.nextDist);
 
-	if (!fs.existsSync(path.join(paths.nextDist, "index.html"))) {
+	if (!fs.existsSync(path.join(webroot.nextDist, "index.html"))) {
 		throw new Error(
-			`Build did not produce ${path.join(paths.nextDist, "index.html")}`,
+			`Build did not produce ${path.join(webroot.nextDist, "index.html")}`,
 		);
 	}
-	publishDist(paths);
-	return paths.dist;
+	publishDist(webroot);
+	return webroot.dist;
 }

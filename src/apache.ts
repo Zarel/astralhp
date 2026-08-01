@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { serverPort } from "./live-server.ts";
-import { astroConfig, type AstrohpResolvedRoutes } from "./webroot.ts";
+import { type AstrohpResolvedRoutes, Webroot } from "./webroot.ts";
 
 const BEGIN_MARKER = "# ===== BEGIN ASTROHP =====";
 const END_MARKER = "# ===== END ASTROHP =====";
@@ -118,10 +118,10 @@ ${END_MARKER}`;
 }
 
 export async function resolveApacheRoutes(
-	root = process.cwd(),
+	webroot: Webroot,
 ): Promise<ApacheRoute[]> {
 	let resolved: AstrohpResolvedRoutes | undefined;
-	const config = astroConfig(root, {
+	const config = webroot.astroConfig({
 		onRoutesResolved(value) {
 			resolved = value;
 		},
@@ -182,12 +182,11 @@ export function replaceApacheBlock(
 }
 
 export function writeApacheConfig(
-	root = process.cwd(),
+	webroot: Webroot,
 	port = apachePort(),
 	routes: readonly ApacheRoute[] = [],
 ): string {
-	const webroot = path.resolve(root);
-	const filename = path.join(webroot, ".htaccess");
+	const filename = path.join(webroot.path, ".htaccess");
 	let source = "";
 	let mode: number | undefined;
 
@@ -206,7 +205,7 @@ export function writeApacheConfig(
 	if (updated === source) return filename;
 
 	const temporary = path.join(
-		webroot,
+		webroot.path,
 		`.htaccess.astrohp-${process.pid}.tmp`,
 	);
 	try {
@@ -220,10 +219,9 @@ export function writeApacheConfig(
 }
 
 export async function generateApacheConfig(
-	root = process.cwd(),
+	webroot: Webroot,
 	port = apachePort(),
 ): Promise<string> {
-	const webroot = path.resolve(root);
 	const routes = await resolveApacheRoutes(webroot);
 	return writeApacheConfig(webroot, port, routes);
 }

@@ -2,7 +2,7 @@ import * as babel from "@babel/core";
 import fs from "node:fs";
 import path from "node:path";
 import type * as vite from "vite";
-import type { WebrootPaths } from "./webroot.ts";
+import type { Webroot } from "./webroot.ts";
 
 const ASTROHP_ROOT = path.resolve(import.meta.dirname, "..");
 const PRIVATE_DIRECTORIES = new Set(["node_modules"]);
@@ -118,10 +118,11 @@ function writeCompiledFile(
 }
 
 export async function compileScript(
-	paths: Pick<WebrootPaths, "webroot" | "dist">,
+	webroot: Webroot,
 	source: string,
+	dist = webroot.dist,
 ): Promise<string | null> {
-	const output = scriptOutputPath(paths.webroot, paths.dist, source);
+	const output = scriptOutputPath(webroot.path, dist, source);
 
 	const result = await babel.transformFileAsync(source, {
 		...SHOWDOWN_BABEL_OPTIONS,
@@ -142,34 +143,35 @@ export async function compileScript(
 }
 
 export async function compileScripts(
-	paths: Pick<WebrootPaths, "webroot" | "dist">,
+	webroot: Webroot,
+	dist = webroot.dist,
 ): Promise<string[]> {
-	const sources = scanBabelSources(paths.webroot);
+	const sources = scanBabelSources(webroot.path);
 	if (!sources.length) return [];
 
 	const outputs = await Promise.all(
-		sources.map(source => compileScript(paths, source)),
+		sources.map(source => compileScript(webroot, source, dist)),
 	);
 	return outputs.filter(output => output !== null);
 }
 
 function removeCompiledScript(
-	paths: Pick<WebrootPaths, "webroot" | "dist">,
+	webroot: Webroot,
 	source: string,
 ): void {
-	const output = scriptOutputPath(paths.webroot, paths.dist, source);
+	const output = scriptOutputPath(webroot.path, webroot.dist, source);
 	fs.rmSync(output, { force: true });
 	fs.rmSync(`${output}.map`, { force: true });
 }
 
-export function babelWatcher(paths: WebrootPaths): vite.Plugin {
-	const knownSources = new Set(scanBabelSources(paths.webroot));
+export function babelWatcher(webroot: Webroot): vite.Plugin {
+	const knownSources = new Set(scanBabelSources(webroot.path));
 	let queue = Promise.resolve();
 
 	return {
 		name: "astrohp:babel",
 		configureServer(server) {
-			server.watcher.add(paths.webroot);
+			server.watcher.add(webroot.path);
 			server.watcher.on("all", (event, filename) => {
 				if (!isBabelSource(filename)) return;
 
@@ -180,10 +182,10 @@ export function babelWatcher(paths: WebrootPaths): vite.Plugin {
 					try {
 						if (event === "unlink") {
 							knownSources.delete(filename);
-							removeCompiledScript(paths, filename);
+							removeCompiledScript(webroot, filename);
 						} else {
 							knownSources.add(filename);
-							await compileScript(paths, filename);
+							await compileScript(webroot, filename);
 						}
 						server.ws.send({ type: "full-reload", path: "*" });
 					} catch (error) {

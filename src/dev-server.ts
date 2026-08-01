@@ -2,7 +2,7 @@ import fs from "node:fs";
 import type * as vite from "vite";
 import { babelWatcher, compileScripts } from "./babel.ts";
 import { contentType } from "./mime.ts";
-import { astroConfig, getWebrootPaths, isPrivateRequest, resolveStaticFile } from "./webroot.ts";
+import { astrohpIntegration, Webroot } from "./webroot.ts";
 
 export interface DevServerOptions {
 	port?: number;
@@ -30,15 +30,13 @@ function isSourceRequest(requestUrl: string | undefined): boolean {
 	}
 }
 
-export function staticFiles(
-	paths: ReturnType<typeof getWebrootPaths>,
-): vite.Plugin {
+export function staticFiles(webroot: Webroot): vite.Plugin {
 	return {
 		name: "astrohp:static-files",
 		enforce: "pre",
 		configureServer(server) {
 			server.middlewares.use((request, response, next) => {
-				if (isPrivateRequest(request.url)) {
+				if (webroot.isPrivateRequest(request.url)) {
 					response.statusCode = 404;
 					response.end();
 					return;
@@ -52,8 +50,8 @@ export function staticFiles(
 
 				const filename = (
 					isCompiledScriptRequest(request.url) &&
-					resolveStaticFile(paths.dist, request.url)
-				) || resolveStaticFile(paths.webroot, request.url);
+					webroot.resolveDistFile(request.url)
+				) || webroot.resolveStaticFile(request.url);
 				if (!filename) return next();
 
 				response.statusCode = 200;
@@ -71,13 +69,12 @@ export function staticFiles(
 }
 
 export async function startDev(
-	root = process.cwd(),
+	webroot: Webroot,
 	options: DevServerOptions = {},
 ) {
 	process.env.ASTRO_TELEMETRY_DISABLED ||= "1";
-	const paths = getWebrootPaths(root);
-	await compileScripts(paths);
-	const config = astroConfig(root);
+	await compileScripts(webroot);
+	const config = webroot.astroConfig();
 	const { dev } = await import("astro");
 	return dev({
 		...config,
@@ -89,11 +86,11 @@ export async function startDev(
 			...config.vite,
 			plugins: [
 				...(config.vite?.plugins || []),
-				babelWatcher(paths),
-				staticFiles(paths),
+				babelWatcher(webroot),
+				staticFiles(webroot),
 			],
 		},
 	});
 }
 
-export { astrohpIntegration, getWebrootPaths, isPrivateRequest, resolveStaticFile } from "./webroot.ts";
+export { astrohpIntegration, Webroot };

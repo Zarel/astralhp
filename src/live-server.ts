@@ -2,7 +2,7 @@ import fs from "node:fs";
 import http from "node:http";
 import type { AddressInfo } from "node:net";
 import { contentType } from "./mime.ts";
-import { getWebrootPaths, isPrivateRequest, resolveDistFile, resolveStaticFile } from "./webroot.ts";
+import { Webroot } from "./webroot.ts";
 
 export interface LiveServerOptions {
 	host?: string;
@@ -44,16 +44,15 @@ function sendFile(
 }
 
 export async function startLive(
-	root = process.cwd(),
+	webroot: Webroot,
 	options: LiveServerOptions = {},
 ): Promise<http.Server> {
-	const paths = getWebrootPaths(root);
-	if (!fs.existsSync(paths.dist)) {
-		throw new Error(`No build found. Run "astrohp build ${paths.webroot}" first.`);
+	if (!fs.existsSync(webroot.dist)) {
+		throw new Error(`No build found. Run "astrohp build ${webroot.path}" first.`);
 	}
 
 	const server = http.createServer((request, response) => {
-		if (isPrivateRequest(request.url)) {
+		if (webroot.isPrivateRequest(request.url)) {
 			response.statusCode = 403;
 			response.end();
 			return;
@@ -65,8 +64,8 @@ export async function startLive(
 			return;
 		}
 
-		const filename = resolveDistFile(paths.dist, request.url) ||
-			resolveStaticFile(paths.webroot, request.url);
+		const filename = webroot.resolveDistFile(request.url) ||
+			webroot.resolveStaticFile(request.url);
 		if (filename) {
 			sendFile(request, response, filename);
 			return;

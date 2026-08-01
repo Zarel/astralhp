@@ -28,7 +28,8 @@ The live server listens on `127.0.0.1:4321` by default. Set the `HOST` or
 
 ## Configuration
 
-While AstroHP can work without a config file, it prefers to have `astrohp.mts`:
+While AstroHP can work without a config file, it prefers to have `.astrohp.mts`
+in the webroot, or `astrohp.mts` in a parent directory of the webroot:
 
 ```ts
 export const config: import("astrohp").Config = {

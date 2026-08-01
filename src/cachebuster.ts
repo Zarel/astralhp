@@ -1,11 +1,10 @@
 import fs from "node:fs";
-import { resolveStaticFile, resolveWebrootFile } from "./webroot.ts";
+import { Webroot } from "./webroot.ts";
 
 function cachebustFile(
-	webroot: string,
 	source: string,
 	base: URL,
-	resolveFile: typeof resolveWebrootFile,
+	resolveFile: (requestUrl: string) => string | null,
 ): string {
 	if (
 		!source || source.startsWith("//") || source.includes("\\") ||
@@ -22,7 +21,7 @@ function cachebustFile(
 		throw new Error(`Cachebusted assets must use a relative or root-relative URL: ${source}`);
 	}
 
-	const filename = resolveFile(webroot, resolved.pathname);
+	const filename = resolveFile(resolved.pathname);
 	if (!filename) {
 		throw new Error(`Cachebusted asset does not exist in the webroot: ${source}`);
 	}
@@ -31,17 +30,19 @@ function cachebustFile(
 	return `${source}?${mtime}`;
 }
 
-export function cachebust(webroot: string, source: string, base: URL): string {
-	return cachebustFile(webroot, source, base, resolveStaticFile);
+export function cachebust(webroot: Webroot, source: string, base: URL): string {
+	return cachebustFile(source, base, requestUrl => webroot.resolveStaticFile(requestUrl));
 }
 
-export function cachebustScript(webroot: string, source: string, base: URL): string {
+export function cachebustScript(webroot: Webroot, source: string, base: URL): string {
 	const typescript = /\.tsx?$/i.test(new URL(source, base).pathname);
 	const cachebusted = cachebustFile(
-		webroot,
 		source,
 		base,
-		typescript ? resolveWebrootFile : resolveStaticFile,
+		requestUrl =>
+			typescript ?
+				webroot.resolveFile(requestUrl) :
+				webroot.resolveStaticFile(requestUrl),
 	);
 	return cachebusted.replace(/\.tsx?(?=\?)/i, ".js");
 }

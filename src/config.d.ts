@@ -14,7 +14,7 @@ export interface Config {
 	 * - `node` - use Astro's Node adapter server for everything
 	 * - `apache-proxy` - use Apache to serve static files, proxying Astro's
 	 *   Node server for dynamic routes
-	 * 
+	 *
 	 * @default 'node'
 	 */
 	adapter?: Adapter;

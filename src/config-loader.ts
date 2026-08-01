@@ -2,65 +2,56 @@ import fs from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 
-import type { Adapter, Config } from "./config.d.ts";
+import type { Config } from "./config.d.ts";
+import { Webroot } from "./webroot.ts";
 
-const CONFIG_FILENAME = "astrohp.mts";
-const ADAPTERS = new Set<Adapter>(["node", "apache-proxy"]);
+const CONFIG_FILENAMES = ["astrohp.mts", ".astrohp.mts"] as const;
+const IGNORED_DIRECTORIES = new Set(["node_modules", ".git", ".caches"]);
 
-export interface ResolvedConfig {
-	filename: string | null;
-	webroot: string;
-	adapter: Adapter;
-	port: number;
-}
-
-function findConfig(workingDirectory: string): string | null {
-	const filename = path.join(workingDirectory, CONFIG_FILENAME);
-	try {
-		if (fs.statSync(filename).isFile()) return filename;
-	} catch (error) {
-		if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
-	}
-	return null;
-}
-
-function validateConfig(value: unknown, filename: string): Config {
-	if (!value || typeof value !== "object" || Array.isArray(value)) {
-		throw new Error(`${filename} must export a configuration object named "config"`);
-	}
-
-	const config = value as Record<string, unknown>;
-	for (const key of Object.keys(config)) {
-		if (key !== "webroot" && key !== "adapter" && key !== "port") {
-			throw new Error(`Unknown AstroHP configuration option: ${key}`);
+function configIn(directory: string): string | null {
+	const matches: string[] = [];
+	for (const basename of CONFIG_FILENAMES) {
+		const filename = path.join(directory, basename);
+		try {
+			if (fs.statSync(filename).isFile()) matches.push(filename);
+		} catch (error) {
+			if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
 		}
 	}
-	if (
-		config.webroot !== undefined &&
-		(typeof config.webroot !== "string" || !config.webroot)
-	) {
-		throw new Error("AstroHP configuration option webroot must be a non-empty string");
-	}
-	if (
-		config.adapter !== undefined &&
-		(typeof config.adapter !== "string" || !ADAPTERS.has(config.adapter as Adapter))
-	) {
+	if (matches.length > 1) {
 		throw new Error(
-			'AstroHP configuration option adapter must be "node" or "apache-proxy"',
+			`Found both ${CONFIG_FILENAMES.join(" and ")} in ${directory}`,
 		);
 	}
-	if (
-		config.port !== undefined &&
-		(typeof config.port !== "number" ||
-			!Number.isInteger(config.port) ||
-			config.port < 0 ||
-			config.port > 65535)
-	) {
-		throw new Error(
-			"AstroHP configuration option port must be an integer from 0 to 65535",
-		);
+	return matches[0] ?? null;
+}
+
+function findChildConfigs(directory: string, configs: string[]): void {
+	const config = configIn(directory);
+	if (config) configs.push(config);
+
+	const entries = fs.readdirSync(directory, { withFileTypes: true })
+		.sort((a, b) => a.name.localeCompare(b.name));
+	for (const entry of entries) {
+		if (!entry.isDirectory() || IGNORED_DIRECTORIES.has(entry.name)) continue;
+		findChildConfigs(path.join(directory, entry.name), configs);
 	}
-	return value as Config;
+}
+
+export function findConfigs(workingDirectory = process.cwd()): string[] {
+	workingDirectory = path.resolve(workingDirectory);
+	const configs: string[] = [];
+	findChildConfigs(workingDirectory, configs);
+
+	let directory = path.dirname(workingDirectory);
+	while (directory !== workingDirectory) {
+		const config = configIn(directory);
+		if (config) configs.push(config);
+		const parent = path.dirname(directory);
+		if (parent === directory) break;
+		directory = parent;
+	}
+	return configs;
 }
 
 async function importConfig(filename: string): Promise<Config> {
@@ -70,37 +61,44 @@ async function importConfig(filename: string): Promise<Config> {
 	if (!("config" in module)) {
 		throw new Error(`${filename} must export a configuration object named "config"`);
 	}
-	return validateConfig(module.config, filename);
+	return module.config as Config;
 }
 
-export async function loadConfig(
+export async function selectWebroot(
 	root?: string,
 	workingDirectory = process.cwd(),
-): Promise<ResolvedConfig> {
+): Promise<Webroot> {
 	workingDirectory = path.resolve(workingDirectory);
-	const requestedRoot = path.resolve(workingDirectory, root ?? ".");
-	const filename = findConfig(workingDirectory);
-	if (!filename) {
-		if (root === undefined) {
-			throw new Error(
-				`Could not find ${CONFIG_FILENAME}; specify a webroot directory`,
-			);
+	const webroots = await discoverWebroots(workingDirectory);
+	if (root !== undefined) {
+		const requestedRoot = path.resolve(workingDirectory, root);
+		const matches = webroots.filter(webroot => webroot.path === requestedRoot);
+		if (matches.length > 1) {
+			throw new Error(`Found multiple configurations for ${requestedRoot}`);
 		}
-		return {
-			filename: null,
-			webroot: requestedRoot,
-			adapter: "node",
-			port: 4321,
-		};
+		if (matches[0]) return matches[0];
+		return new Webroot({ webroot: requestedRoot });
 	}
+	if (!webroots.length) {
+		throw new Error(
+			`Could not find ${CONFIG_FILENAMES.join(" or ")}; specify a webroot directory`,
+		);
+	}
+	if (webroots.length > 1) {
+		throw new Error(
+			`Found multiple AstroHP webroots; specify one:\n${webroots.map(webroot => webroot.path).join("\n")}`,
+		);
+	}
+	return webroots[0]!;
+}
 
-	const config = await importConfig(filename);
-	return {
-		filename,
-		webroot: root !== undefined ?
-			requestedRoot :
-			path.resolve(workingDirectory, config.webroot ?? "."),
-		adapter: config.adapter ?? "node",
-		port: config.port ?? 4321,
-	};
+export async function discoverWebroots(
+	workingDirectory = process.cwd(),
+): Promise<Webroot[]> {
+	return Promise.all(
+		findConfigs(workingDirectory).map(async filename => {
+			const config = await importConfig(filename);
+			return new Webroot(config, filename);
+		}),
+	);
 }
