@@ -1,7 +1,10 @@
+import type * as astro from "astro";
 import fs from "node:fs";
 import path from "node:path";
+import { generateApacheConfig } from "./apache.ts";
 import { compileScripts } from "./babel.ts";
-import { Webroot } from "./webroot.ts";
+import { serverPort } from "./live-server.ts";
+import type { AstrohpResolvedRoutes, Webroot } from "./webroot.ts";
 
 type DistPaths = Pick<
 	Webroot,
@@ -49,9 +52,12 @@ export function publishDist(paths: DistPaths): void {
 	removeDirectory(paths.previousDist);
 }
 
-export async function buildSite(webroot: Webroot): Promise<string> {
+export async function buildSite(
+	webroot: Webroot,
+	config: astro.AstroInlineConfig,
+	resolvedRoutes: () => AstrohpResolvedRoutes | undefined,
+): Promise<string> {
 	process.env.ASTRO_TELEMETRY_DISABLED ||= "1";
-	const config = webroot.astroConfig();
 	const { build } = await import("astro");
 	if (!fs.existsSync(webroot.dist) && fs.existsSync(webroot.previousDist)) {
 		fs.renameSync(webroot.previousDist, webroot.dist);
@@ -66,6 +72,7 @@ export async function buildSite(webroot: Webroot): Promise<string> {
 			...config,
 			outDir: webroot.nextDist,
 			build: {
+				...config.build,
 				format: "preserve",
 			},
 		});
@@ -80,5 +87,12 @@ export async function buildSite(webroot: Webroot): Promise<string> {
 		);
 	}
 	publishDist(webroot);
+	if (webroot.adapter === "apache-proxy") {
+		const resolved = resolvedRoutes();
+		if (!resolved) throw new Error("Astro did not resolve the AstroHP routes");
+		console.log(
+			generateApacheConfig(webroot, resolved, serverPort(webroot.port)),
+		);
+	}
 	return webroot.dist;
 }

@@ -19,9 +19,10 @@ export interface Config {
 	 */
 	adapter?: Adapter;
 	/**
-	 * Port for the Astro Node adapter server. With AstroHP's `node` adapter,
-	 * this is the port for the entire server. With `apache-proxy`, this only
-	 * serves dynamic routes and is proxied by Apache.
+	 * Port for the AstroHP server. `apache-proxy` webroots with the same port
+	 * share one listener in the same process. Each `node` webroot must use a
+	 * different port. With `apache-proxy`, the port only serves dynamic routes
+	 * and is proxied by Apache.
 	 *
 	 * @default 4321
 	 */

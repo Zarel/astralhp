@@ -21,7 +21,8 @@ astrohp start example
 
 The build writes generated Astro files to `example/.caches/dist/`. The live
 server serves those generated files alongside static files read directly from
-the webroot. It never copies the webroot's static files.
+the webroot. Dynamic pages are handled by Astro's Node adapter middleware from
+`example/.caches/dist/.server/`. It never copies the webroot's static files.
 
 The live server listens on `127.0.0.1:4321` by default. Set the `HOST` or
 `PORT` environment variables to override either value.
@@ -49,6 +50,9 @@ astrohp dev
 astrohp build
 astrohp start
 ```
+
+`astrohp build` and `astrohp start` work with multiple webroots, and can
+start one server capable of serving multiple webroots.
 
 ## Apache
 
@@ -82,7 +86,11 @@ is prerendered, it generates no proxy rules and Apache is the only server
 needed.
 
 The configured `port` is used both when generating the proxy configuration and
-starting AstroHP. A `PORT` environment variable overrides it for both commands:
+starting AstroHP. Apache sends its document root in a private request header so
+a shared listener can select the correct webroot, and preserves the original
+hostname so Astro sees the public URL. A `PORT` environment variable overrides
+the configured port for both commands; when starting multiple `apache-proxy`
+webroots, this places all of them on one shared listener:
 
 ```sh
 PORT=9001 astrohp build example
@@ -91,8 +99,8 @@ PORT=9001 astrohp start example
 
 The `.htaccess` expects the webroot to be the Apache `DocumentRoot`, Apache
 2.4.53 or newer, and `mod_rewrite`. Dynamic pages additionally require
-`mod_proxy` and `mod_proxy_http`. The directory must allow `FileInfo` overrides
-and either `FollowSymLinks` or `SymLinksIfOwnerMatch`.
+`mod_proxy`, `mod_proxy_http`, and `mod_headers`. The directory must allow
+`FileInfo` overrides and either `FollowSymLinks` or `SymLinksIfOwnerMatch`.
 
 (These are all default settings except `FileInfo`, which is the one that allows
 `.htaccess` files in the first place, which is usually enabled by shared hosts.)

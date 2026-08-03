@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { serverPort } from "./live-server.ts";
-import { type AstrohpResolvedRoutes, Webroot } from "./webroot.ts";
+import type { AstrohpResolvedRoutes, Webroot } from "./webroot.ts";
 
 const BEGIN_MARKER = "# ===== BEGIN ASTROHP =====";
 const END_MARKER = "# ===== END ASTROHP =====";
@@ -69,7 +69,13 @@ function proxyRules(port: number, routes: readonly ApacheRoute[]): string {
 		const regex = route.regex.replace(/"/g, '\\"');
 		return `RewriteRule "${regex}" "http://127.0.0.1:${port}%{REQUEST_URI}" [P,END,NE]`;
 	});
-	return `# Proxy dynamic AstroHP routes
+	return `# Identify this Apache webroot to the shared AstroHP server
+RequestHeader set X-AstroHP-Document-Root "expr=%{DOCUMENT_ROOT}"
+
+# Preserve the public hostname for Astro
+ProxyPreserveHost On
+
+# Proxy dynamic AstroHP routes
 ${rules.join("\n")}`;
 }
 
@@ -117,20 +123,9 @@ RewriteRule "^(.+?)/?$" ".caches/dist/$1/index.html" [END]${proxy ? `\n\n${proxy
 ${END_MARKER}`;
 }
 
-export async function resolveApacheRoutes(
-	webroot: Webroot,
-): Promise<ApacheRoute[]> {
-	let resolved: AstrohpResolvedRoutes | undefined;
-	const config = webroot.astroConfig({
-		onRoutesResolved(value) {
-			resolved = value;
-		},
-	});
-	const { sync } = await import("astro");
-	await sync({ ...config, logLevel: "silent" });
-	if (!resolved) {
-		throw new Error("Astro did not resolve the AstroHP routes");
-	}
+export function resolveApacheRoutes(
+	resolved: AstrohpResolvedRoutes,
+): ApacheRoute[] {
 	const { routes, trailingSlash } = resolved;
 	return routes
 		.filter(route => route.type === "page" && !route.isPrerendered)
@@ -218,10 +213,11 @@ export function writeApacheConfig(
 	return filename;
 }
 
-export async function generateApacheConfig(
+export function generateApacheConfig(
 	webroot: Webroot,
+	resolved: AstrohpResolvedRoutes,
 	port = apachePort(),
-): Promise<string> {
-	const routes = await resolveApacheRoutes(webroot);
+): string {
+	const routes = resolveApacheRoutes(resolved);
 	return writeApacheConfig(webroot, port, routes);
 }

@@ -1,5 +1,5 @@
 import fs from "node:fs";
-import { Webroot } from "./webroot.ts";
+import type { Webroot } from "./webroot.ts";
 
 function cachebustFile(
 	source: string,

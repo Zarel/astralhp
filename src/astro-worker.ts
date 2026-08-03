@@ -1,0 +1,228 @@
+import nodeAdapter from "@astrojs/node";
+import type * as astro from "astro";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import type * as vite from "vite";
+
+import { buildSite } from "./build.ts";
+import { type DevServerOptions, startDev } from "./dev-server.ts";
+import { type AstroHPServer, type LiveServerOptions, serverPort, startLive } from "./live-server.ts";
+import {
+	type AstrohpConfigOptions,
+	astrohpIntegration,
+	type AstrohpPage,
+	type AstrohpResolvedRoutes,
+	Webroot,
+} from "./webroot.ts";
+
+interface SerializedWebroot {
+	path: string;
+	configFile: string | null;
+	adapter: Webroot["adapter"];
+	port: number;
+}
+
+interface WorkerRequest {
+	operation: "build" | "dev" | "start";
+	webroots: SerializedWebroot[];
+	options?: DevServerOptions | LiveServerOptions;
+}
+
+function webrootFrom(data: SerializedWebroot): Webroot {
+	return new Webroot({
+		webroot: data.path,
+		adapter: data.adapter,
+		port: data.port,
+	}, data.configFile);
+}
+
+function outsideRootEntrypoints(
+	webroot: Webroot,
+	pages: AstrohpPage[],
+): vite.Plugin {
+	const nodeImageEndpoint = fileURLToPath(
+		import.meta.resolve("astro/assets/endpoint/node"),
+	);
+	const entrypoints = new Map(
+		[...pages.map(page => page.entrypoint), nodeImageEndpoint].map(entrypoint => {
+			const relative = path.relative(webroot.caches, entrypoint)
+				.split(path.sep).join("/");
+			return [`/${relative}`, entrypoint];
+		}),
+	);
+
+	return {
+		name: "astrohp:outside-root-entrypoints",
+		enforce: "pre",
+		resolveId(source) {
+			if (
+				source === "astro" || source.startsWith("astro/") ||
+				source === "@astrojs/node" || source.startsWith("@astrojs/node/") ||
+				source === "astrohp/components"
+			) {
+				try {
+					return fileURLToPath(import.meta.resolve(source));
+				} catch {}
+			}
+			return entrypoints.get(source) ?? null;
+		},
+	};
+}
+
+function astroConfig(
+	webroot: Webroot,
+	options: AstrohpConfigOptions = {},
+): astro.AstroInlineConfig {
+	const pages = webroot.scanPages();
+	if (!pages.length) {
+		throw new Error(`No .astro pages found in ${webroot.path}`);
+	}
+
+	return {
+		root: webroot.caches,
+		cacheDir: webroot.astroCache,
+		publicDir: webroot.publicDir,
+		output: "server",
+		adapter: nodeAdapter({ mode: "middleware" }),
+		build: {
+			client: "./",
+			server: "./.server/",
+		},
+		server: {
+			port: webroot.port,
+		},
+		devToolbar: {
+			enabled: false,
+		},
+		integrations: [astrohpIntegration(pages, {
+			...options,
+			entrypointRoot: webroot.caches,
+		})],
+		vite: {
+			root: webroot.path,
+			cacheDir: webroot.viteCache,
+			server: {
+				watch: {
+					ignored: ["**/.caches/**"],
+				},
+			},
+			define: {
+				"import.meta.env.ASTROHP_WEBROOT": JSON.stringify(webroot.path),
+			},
+			plugins: [outsideRootEntrypoints(webroot, pages)],
+		},
+	};
+}
+
+function send(message: object): Promise<void> {
+	return new Promise((resolve, reject) => {
+		if (!process.send) {
+			reject(new Error("AstroHP worker requires an IPC channel"));
+			return;
+		}
+		process.send(message, error => error ? reject(error) : resolve());
+	});
+}
+
+function serializedError(error: unknown) {
+	if (error instanceof Error) {
+		return {
+			name: error.name,
+			message: error.message,
+			...(error.stack === undefined ? {} : { stack: error.stack }),
+		};
+	}
+	return {
+		name: "Error",
+		message: String(error),
+	};
+}
+
+let close: (() => Promise<void>) | undefined;
+let closing = false;
+
+async function shutdown(): Promise<void> {
+	if (closing) return;
+	closing = true;
+	try {
+		await close?.();
+		if (process.connected) process.disconnect();
+	} catch (error) {
+		console.error(error);
+		process.exitCode = 1;
+		if (process.connected) process.disconnect();
+	}
+}
+
+async function run(request: WorkerRequest): Promise<void> {
+	const webroots = request.webroots.map(webrootFrom);
+	switch (request.operation) {
+		case "build": {
+			if (webroots.length !== 1) {
+				throw new Error("An AstroHP build worker requires exactly one webroot");
+			}
+			let resolvedRoutes: AstrohpResolvedRoutes | undefined;
+			const config = astroConfig(webroots[0]!, {
+				onRoutesResolved(value) {
+					resolvedRoutes = value;
+				},
+			});
+			const result = await buildSite(
+				webroots[0]!,
+				config,
+				() => resolvedRoutes,
+			);
+			await send({ type: "ready", result });
+			process.disconnect();
+			break;
+		}
+		case "dev": {
+			if (webroots.length !== 1) {
+				throw new Error("An AstroHP dev worker requires exactly one webroot");
+			}
+			const options = request.options as DevServerOptions | undefined;
+			const server = await startDev(webroots[0]!, astroConfig(webroots[0]!), {
+				...options,
+				port: options?.port ?? serverPort(webroots[0]!.port),
+			});
+			close = () => server.stop();
+			await send({ type: "ready" });
+			break;
+		}
+		case "start": {
+			const servers = await startLive(
+				webroots,
+				request.options as LiveServerOptions | undefined,
+			);
+			close = () =>
+				Promise.all(
+					servers.map((server: AstroHPServer) => server.close()),
+				).then(() => {});
+			await send({ type: "ready" });
+			break;
+		}
+	}
+}
+
+process.once("message", (request: WorkerRequest) => {
+	run(request).catch(async error => {
+		try {
+			await send({ type: "error", error: serializedError(error) });
+		} catch {}
+		process.exitCode = 1;
+		if (process.connected) process.disconnect();
+	});
+});
+
+process.on("message", message => {
+	if (
+		message && typeof message === "object" &&
+		"type" in message && message.type === "close"
+	) {
+		void shutdown();
+	}
+});
+
+process.on("disconnect", () => {
+	void shutdown();
+});

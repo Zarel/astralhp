@@ -1,8 +1,9 @@
+import type * as astro from "astro";
 import fs from "node:fs";
 import type * as vite from "vite";
 import { babelWatcher, compileScripts } from "./babel.ts";
 import { contentType } from "./mime.ts";
-import { astrohpIntegration, Webroot } from "./webroot.ts";
+import type { Webroot } from "./webroot.ts";
 
 export interface DevServerOptions {
 	port?: number;
@@ -70,11 +71,11 @@ export function staticFiles(webroot: Webroot): vite.Plugin {
 
 export async function startDev(
 	webroot: Webroot,
+	config: astro.AstroInlineConfig,
 	options: DevServerOptions = {},
 ) {
 	process.env.ASTRO_TELEMETRY_DISABLED ||= "1";
 	await compileScripts(webroot);
-	const config = webroot.astroConfig();
 	const { dev } = await import("astro");
 	return dev({
 		...config,
@@ -92,5 +93,3 @@ export async function startDev(
 		},
 	});
 }
-
-export { astrohpIntegration, Webroot };
