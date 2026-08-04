@@ -6,9 +6,9 @@
  * @author Zarel
  */
 
+import type * as mysql from "mysql2";
 import * as fs from "node:fs";
 import { createRequire } from "node:module";
-import type * as mysql from "mysql2";
 import type * as pg from "pg";
 
 const require = createRequire(import.meta.url);
@@ -27,16 +27,28 @@ function loadSQLite(): typeof import("node:sqlite") {
 
 export type BasicSQLValue = string | number | null;
 export type SQLRow = { [k: string]: BasicSQLValue };
-export type SQLValue = BasicSQLValue | SQLStatement | PartialOrSQL<SQLRow> | BasicSQLValue[] | undefined;
-
-export class SQLStatement {
+export interface SQL {
+	readonly __isSQLStatement: true;
 	sql: string[];
 	values: BasicSQLValue[];
-	constructor(strings: TemplateStringsArray, values: SQLValue[]) {
+}
+export type SQLValue =
+	| BasicSQLValue
+	| SQL
+	| SQL[]
+	| PartialOrSQL<SQLRow>
+	| BasicSQLValue[]
+	| undefined;
+
+export class SQLStatement implements SQL {
+	readonly __isSQLStatement = true as const;
+	sql: string[];
+	values: BasicSQLValue[];
+	constructor(strings: TemplateStringsArray | string[], values: SQLValue[]) {
 		this.sql = [strings[0] ?? ""];
 		this.values = [];
-		for (let i = 0; i < values.length; i++) {
-			this.append(values[i], strings[i + 1] ?? "");
+		for (let i = 0; i < strings.length - 1; i++) {
+			this.append(values[i]).appendRaw(strings[i + 1] ?? "");
 		}
 	}
 	private lastString(): string {
@@ -45,59 +57,61 @@ export class SQLStatement {
 	private overwriteLastString(sql: string) {
 		this.sql[this.sql.length - 1] = sql;
 	}
-	private appendString(sql: string) {
+	appendRaw(sql: string): this {
 		this.overwriteLastString(this.lastString() + sql);
+		return this;
 	}
-	append(value: SQLValue, nextString = ""): this {
-		if (value instanceof SQLStatement) {
+	append(value: SQLValue): this {
+		if (SQL.isSQL(value)) {
 			if (!value.sql.length) return this;
-			this.appendString(value.sql[0]!);
+			this.appendRaw(value.sql[0]!);
 			this.sql = this.sql.concat(value.sql.slice(1));
 			this.values = this.values.concat(value.values);
-			if (nextString) this.appendString(nextString);
 		} else if (typeof value === "string" || typeof value === "number" || value === null) {
 			this.values.push(value);
-			this.sql.push(nextString);
+			this.sql.push("");
 		} else if (value === undefined) {
-			this.appendString(nextString);
+			// Do nothing.
 		} else if (Array.isArray(value)) {
-			if ('"`'.includes(this.lastString().slice(-1))) {
+			if (!value.length || SQL.isSQL(value[0])) {
+				for (const statement of value) this.append(statement);
+			} else if ('"`'.includes(this.lastString().slice(-1))) {
 				// "`a`, `b`" syntax
 				const quoteChar = this.lastString().slice(-1);
 				for (const col of value) {
-					this.append(col, `${quoteChar}, ${quoteChar}`);
+					this.append(col).appendRaw(`${quoteChar}, ${quoteChar}`);
 				}
-				this.overwriteLastString(this.lastString().slice(0, -4) + nextString);
+				this.overwriteLastString(this.lastString().slice(0, -4));
 			} else {
 				// "1, 2" syntax
 				for (const val of value) {
-					this.append(val, `, `);
+					this.append(val).appendRaw(`, `);
 				}
-				this.overwriteLastString(this.lastString().slice(0, -2) + nextString);
+				this.overwriteLastString(this.lastString().slice(0, -2));
 			}
 		} else if (this.lastString().endsWith("(")) {
 			// "(`a`, `b`) VALUES (1, 2)" syntax
-			this.appendString(`"`);
+			this.appendRaw(`"`);
 			for (const col in value) {
-				this.append(col, `", "`);
+				this.append(col).appendRaw(`", "`);
 			}
 			this.overwriteLastString(this.lastString().slice(0, -4) + `") VALUES (`);
 			for (const col in value) {
-				this.append(value[col], `, `);
+				this.append(value[col]).appendRaw(`, `);
 			}
-			this.overwriteLastString(this.lastString().slice(0, -2) + nextString);
+			this.overwriteLastString(this.lastString().slice(0, -2));
 		} else if (this.lastString().toUpperCase().endsWith(" SET ")) {
 			// "`a` = 1, `b` = 2" syntax
-			this.appendString(`"`);
+			this.appendRaw(`"`);
 			for (const col in value) {
-				this.append(col, `" = `);
-				this.append(value[col], `, "`);
+				this.append(col).appendRaw(`" = `);
+				this.append(value[col]).appendRaw(`, "`);
 			}
-			this.overwriteLastString(this.lastString().slice(0, -3) + nextString);
+			this.overwriteLastString(this.lastString().slice(0, -3));
 		} else {
 			throw new Error(
 				`Objects can only appear in (obj) or after SET; ` +
-					`unrecognized: ${this.lastString()}[obj]${nextString}`,
+					`unrecognized: ${this.lastString()}[obj]`,
 			);
 		}
 		return this;
@@ -132,9 +146,14 @@ export class SQLStatement {
  * * `` SQL`INSERT INTO table ("${['a', 'b']}") VALUES (${[1, 2]})` ``
  *   * `` `INSERT INTO table ("a", "b") VALUES (1, 2)` ``
  */
-export function SQL(strings: TemplateStringsArray, ...values: SQLValue[]) {
+
+export function SQL(strings: TemplateStringsArray | string[] | string, ...values: SQLValue[]) {
+	if (typeof strings === "string") strings = [strings];
 	return new SQLStatement(strings, values);
 }
+SQL.isSQL = (value: unknown): value is SQL => {
+	return (value as SQL | undefined)?.__isSQLStatement === true;
+};
 
 export interface ResultRow {
 	[k: string]: BasicSQLValue;
@@ -156,41 +175,41 @@ export abstract class Database<Pool = mysql.Pool | pg.Pool, OkPacket = unknown> 
 		this.connection = connection;
 		connectedDatabases.push(this);
 	}
-	abstract _resolveSQL(query: SQLStatement): [query: string, values: BasicSQLValue[]];
+	abstract _resolveSQL(query: SQL): [query: string, values: BasicSQLValue[]];
 	abstract _query(sql: string, values: BasicSQLValue[]): Promise<any>;
 	abstract _queryExec(sql: string, values: BasicSQLValue[]): Promise<OkPacket>;
 	abstract escapeId(param: string): string;
-	query<T = ResultRow>(sql: SQLStatement): Promise<T[]>;
+	query<T = ResultRow>(sql: SQL): Promise<T[]>;
 	query<T = ResultRow>(): (strings: TemplateStringsArray, ...rest: SQLValue[]) => Promise<T[]>;
-	query<T = ResultRow>(sql?: SQLStatement) {
+	query<T = ResultRow>(sql?: SQL) {
 		if (!sql) return (strings: any, ...rest: any) => this.query<T>(new SQLStatement(strings, rest));
 
 		const [query, values] = this._resolveSQL(sql);
 		return this._query(query, values);
 	}
-	queryOne<T = ResultRow>(sql: SQLStatement): Promise<T | undefined>;
+	queryOne<T = ResultRow>(sql: SQL): Promise<T | undefined>;
 	queryOne<T = ResultRow>(): (strings: TemplateStringsArray, ...rest: SQLValue[]) => Promise<T | undefined>;
-	queryOne<T = ResultRow>(sql?: SQLStatement) {
+	queryOne<T = ResultRow>(sql?: SQL) {
 		if (!sql) return (strings: any, ...rest: any) => this.queryOne<T>(new SQLStatement(strings, rest));
 
 		return this.query<T>(sql).then(res => Array.isArray(res) ? res[0] : res);
 	}
-	queryExec(sql: SQLStatement): Promise<OkPacket>;
+	queryExec(sql: SQL): Promise<OkPacket>;
 	queryExec(): (strings: TemplateStringsArray, ...rest: SQLValue[]) => Promise<OkPacket>;
-	queryExec(sql?: SQLStatement) {
+	queryExec(sql?: SQL) {
 		if (!sql) return (strings: any, ...rest: any) => this.queryExec(new SQLStatement(strings, rest));
 
 		const [query, values] = this._resolveSQL(sql);
 		return this._queryExec(query, values);
 	}
-	getTable<Row>(name: string, primaryKeyName: keyof Row & string | null = null): DatabaseTable<Row, typeof this> {
-		return new DatabaseTable<Row, typeof this>(this, name, primaryKeyName);
+	getTable<Row>(name: string, primaryKeyName: keyof Row & string | null = null): DatabaseTable<Row, this> {
+		return new DatabaseTable<Row, this>(this, name, primaryKeyName);
 	}
 	abstract close(): Promise<void>;
 }
 
 type PartialOrSQL<T> = {
-	[P in keyof T]?: T[P] | SQLStatement;
+	[P in keyof T]?: T[P] | SQL;
 };
 
 type OkPacketOf<DB extends Database> = DB extends Database<any, infer T> ? T : never;
@@ -215,26 +234,26 @@ export class DatabaseTable<Row, DB extends Database<any, any>> {
 
 	// raw
 
-	query<T = Row>(sql: SQLStatement): Promise<T[]>;
+	query<T = Row>(sql: SQL): Promise<T[]>;
 	query<T = Row>(): (strings: TemplateStringsArray, ...rest: SQLValue[]) => Promise<T[]>;
-	query<T = Row>(sql?: SQLStatement) {
+	query<T = Row>(sql?: SQL) {
 		return this.db.query<T>(sql as any) as any;
 	}
-	queryOne<T = Row>(sql: SQLStatement): Promise<T | undefined>;
+	queryOne<T = Row>(sql: SQL): Promise<T | undefined>;
 	queryOne<T = Row>(): (strings: TemplateStringsArray, ...rest: SQLValue[]) => Promise<T | undefined>;
-	queryOne<T = Row>(sql?: SQLStatement) {
+	queryOne<T = Row>(sql?: SQL) {
 		return this.db.queryOne<T>(sql as any) as any;
 	}
-	queryExec(sql: SQLStatement): Promise<OkPacketOf<DB>>;
+	queryExec(sql: SQL): Promise<OkPacketOf<DB>>;
 	queryExec(): (strings: TemplateStringsArray, ...rest: SQLValue[]) => Promise<OkPacketOf<DB>>;
-	queryExec(sql?: SQLStatement) {
+	queryExec(sql?: SQL) {
 		return this.db.queryExec(sql as any) as any;
 	}
 
 	// low-level
 
 	selectAll<T = Row>(
-		entries?: (keyof Row & string)[] | SQLStatement,
+		entries?: (keyof Row & string)[] | SQL,
 	): (strings: TemplateStringsArray, ...rest: SQLValue[]) => Promise<T[]> {
 		if (!entries) entries = SQL`*`;
 		if (Array.isArray(entries)) entries = SQL`"${entries}"`;
@@ -242,7 +261,7 @@ export class DatabaseTable<Row, DB extends Database<any, any>> {
 			this.query<T>()`SELECT ${entries} FROM "${this.name}" ${new SQLStatement(strings, rest)}`;
 	}
 	selectOne<T = Row>(
-		entries?: (keyof Row & string)[] | SQLStatement,
+		entries?: (keyof Row & string)[] | SQL,
 	): (strings: TemplateStringsArray, ...rest: SQLValue[]) => Promise<T | undefined> {
 		if (!entries) entries = SQL`*`;
 		if (Array.isArray(entries)) entries = SQL`"${entries}"`;
@@ -256,7 +275,7 @@ export class DatabaseTable<Row, DB extends Database<any, any>> {
 			this.queryExec()`UPDATE "${this.name}" SET ${partialRow as any} ${new SQLStatement(strings, rest)}`;
 	}
 	updateOne(
-		partialRow: PartialOrSQL<Row>,
+		partialRow: PartialOrSQL<Row> | SQL,
 	): (strings: TemplateStringsArray, ...rest: SQLValue[]) => Promise<OkPacketOf<DB>> {
 		if (this.db.type === "sqlite") {
 			// sqlite usually doesn't support UPDATE ... LIMIT 1
@@ -265,6 +284,10 @@ export class DatabaseTable<Row, DB extends Database<any, any>> {
 				WHERE rowid = (
 					SELECT rowid FROM "${this.name}" ${new SQLStatement(strings, rest)} LIMIT 1
 				)`;
+		}
+		if (this.db.type === "pg") {
+			return (strings, ...rest) =>
+				this.queryExec()`UPDATE "${this.name}" SET ${partialRow as any} ${new SQLStatement(strings, rest)}`;
 		}
 		return (s, ...r) =>
 			this.queryExec()`UPDATE "${this.name}" SET ${partialRow as any} ${new SQLStatement(s, r)} LIMIT 1`;
@@ -281,6 +304,9 @@ export class DatabaseTable<Row, DB extends Database<any, any>> {
 					SELECT rowid FROM "${this.name}" ${new SQLStatement(strings, rest)} LIMIT 1
 				)`;
 		}
+		if (this.db.type === "pg") {
+			return (strings, ...rest) => this.queryExec()`DELETE FROM "${this.name}" ${new SQLStatement(strings, rest)}`;
+		}
 		return (strings, ...rest) =>
 			this.queryExec()`DELETE FROM "${this.name}" ${new SQLStatement(strings, rest)} LIMIT 1`;
 	}
@@ -292,17 +318,17 @@ export class DatabaseTable<Row, DB extends Database<any, any>> {
 
 	// high-level
 
-	insert(partialRow: PartialOrSQL<Row>, where?: SQLStatement) {
+	insert(partialRow: PartialOrSQL<Row>, where?: SQL) {
 		return this.queryExec()`INSERT INTO "${this.name}" (${partialRow as SQLValue}) ${where}`;
 	}
-	insertIgnore(partialRow: PartialOrSQL<Row>, where?: SQLStatement) {
+	insertIgnore(partialRow: PartialOrSQL<Row>, where?: SQL) {
 		if (this.db.type === "sqlite") {
 			// sqlite usually doesn't support DELETE ... LIMIT 1
 			return this.queryExec()`INSERT OR IGNORE INTO "${this.name}" (${partialRow as SQLValue}) ${where}`;
 		}
 		return this.queryExec()`INSERT IGNORE INTO "${this.name}" (${partialRow as SQLValue}) ${where}`;
 	}
-	async tryInsert(partialRow: PartialOrSQL<Row>, where?: SQLStatement) {
+	async tryInsert(partialRow: PartialOrSQL<Row>, where?: SQL) {
 		try {
 			return await this.insert(partialRow, where);
 		} catch (err: any) {
@@ -316,45 +342,39 @@ export class DatabaseTable<Row, DB extends Database<any, any>> {
 			throw err;
 		}
 	}
-	upsert(partialRow: PartialOrSQL<Row>, partialUpdate = partialRow, where?: SQLStatement) {
-		if (this.db.type === "sqlite") {
+	upsert(partialRow: PartialOrSQL<Row>, partialUpdate = partialRow, where?: SQL) {
+		if (this.db.type === "sqlite" || this.db.type === "pg") {
 			if (!this.primaryKeyName) throw new Error(`Cannot upsert() without a single-column primary key`);
 			return this
 				.queryExec()`INSERT INTO "${this.name}" (${partialRow as any}) ON CONFLICT ("${this.primaryKeyName}") DO UPDATE SET ${partialUpdate as any} ${where}`;
 		}
-		if (this.db.type === "pg") {
-			return this
-				.queryExec()`INSERT INTO "${this.name}" (${partialRow as any}) ON CONFLICT (${this.primaryKeyName}) DO UPDATE ${partialUpdate as any} ${where}`;
-		}
 		return this
 			.queryExec()`INSERT INTO "${this.name}" (${partialRow as any}) ON DUPLICATE KEY UPDATE ${partialUpdate as any} ${where}`;
 	}
-	set(primaryKey: BasicSQLValue, partialRow: PartialOrSQL<Row>, where?: SQLStatement) {
+	set(primaryKey: BasicSQLValue, partialRow: PartialOrSQL<Row>, where?: SQL) {
 		if (!this.primaryKeyName) throw new Error(`Cannot set() without a single-column primary key`);
 		partialRow[this.primaryKeyName] = primaryKey as any;
 		return this.replace(partialRow, where);
 	}
-	replace(partialRow: PartialOrSQL<Row>, where?: SQLStatement) {
+	replace(partialRow: PartialOrSQL<Row>, where?: SQL) {
+		if (this.db.type === "pg") {
+			if (!this.primaryKeyName) throw new Error(`Cannot replace() without a single-column primary key`);
+			return this
+				.queryExec()`INSERT INTO "${this.name}" (${partialRow as any}) ON CONFLICT ("${this.primaryKeyName}") DO UPDATE SET ${partialRow as any} ${where}`;
+		}
 		return this.queryExec()`REPLACE INTO "${this.name}" (${partialRow as SQLValue}) ${where}`;
 	}
-	get(primaryKey: BasicSQLValue, entries?: (keyof Row & string)[] | SQLStatement) {
+	get(primaryKey: BasicSQLValue, entries?: (keyof Row & string)[] | SQL) {
 		if (!this.primaryKeyName) throw new Error(`Cannot get() without a single-column primary key`);
 		return this.selectOne(entries)`WHERE "${this.primaryKeyName}" = ${primaryKey}`;
 	}
 	delete(primaryKey: BasicSQLValue) {
 		if (!this.primaryKeyName) throw new Error(`Cannot delete() without a single-column primary key`);
-		if (this.db.type === "sqlite") {
-			return this.deleteAll()`WHERE "${this.primaryKeyName}" = ${primaryKey}`;
-		}
-		return this.deleteAll()`WHERE "${this.primaryKeyName}" = ${primaryKey} LIMIT 1`;
+		return this.deleteAll()`WHERE "${this.primaryKeyName}" = ${primaryKey}`;
 	}
 	update(primaryKey: BasicSQLValue, data: PartialOrSQL<Row>) {
 		if (!this.primaryKeyName) throw new Error(`Cannot update() without a single-column primary key`);
-		// cockroach/pg  do not support limit in update queries so we have to case this
-		return this.updateAll(data)`
-			WHERE "${this.primaryKeyName}" = ${primaryKey}
-			${this.db.type === "mysql" ? SQL` LIMIT 1` : SQL``}
-		`;
+		return this.updateAll(data)`WHERE "${this.primaryKeyName}" = ${primaryKey}`;
 	}
 }
 
@@ -368,7 +388,7 @@ export class MySQLDatabase extends Database<mysql.Pool, mysql.OkPacket> {
 		}
 		super(loadMySQL().createPool(config), prefix);
 	}
-	override _resolveSQL(query: SQLStatement): [query: string, values: BasicSQLValue[]] {
+	override _resolveSQL(query: SQL): [query: string, values: BasicSQLValue[]] {
 		let sql = query.sql[0]!;
 		const values: BasicSQLValue[] = [];
 		for (let i = 0; i < query.values.length; i++) {
@@ -418,7 +438,7 @@ export class PGDatabase extends Database<pg.Pool, { affectedRows: number | null 
 	constructor(config: pg.PoolConfig) {
 		super(new (loadPG().Pool)(config));
 	}
-	override _resolveSQL(query: SQLStatement): [query: string, values: BasicSQLValue[]] {
+	override _resolveSQL(query: SQL): [query: string, values: BasicSQLValue[]] {
 		let sql = query.sql[0]!;
 		const values: BasicSQLValue[] = [];
 		let paramCount = 0;
@@ -466,7 +486,7 @@ export class SQLiteDatabase extends Database<import("node:sqlite").DatabaseSync,
 		super(new (loadSQLite().DatabaseSync)(config.path || ":memory:"), config.prefix || "");
 	}
 
-	override _resolveSQL(query: SQLStatement): [query: string, values: BasicSQLValue[]] {
+	override _resolveSQL(query: SQL): [query: string, values: BasicSQLValue[]] {
 		let sql = query.sql[0]!;
 		const values: BasicSQLValue[] = [];
 		for (let i = 0; i < query.values.length; i++) {
