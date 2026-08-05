@@ -17,8 +17,19 @@ function loadMySQL(): typeof import("mysql2") {
 	return require("mysql2");
 }
 
+let pgRuntime: typeof import("pg") | undefined;
 function loadPG(): typeof import("pg") {
-	return require("pg");
+	if (pgRuntime) return pgRuntime;
+	const runtime: typeof import("pg") = require("pg");
+	// postgres `bigint` (8-byte integer) values can exceed Number.MAX_SAFE_INTEGER,
+	// so pg turns them into strings by default, which are annoying to use and
+	// don't match our behavior for mysql and sqlite.
+	// in practice, people use 64-bit ints when 32-bit isn't enough, but JS's
+	// 52 bits is usually enough, so we default to parsing them as numbers.
+	// change this default if you actually need those 12 extra bits.
+	runtime.defaults.parseInt8 = true;
+	pgRuntime = runtime;
+	return runtime;
 }
 
 function loadSQLite(): typeof import("node:sqlite") {
@@ -121,7 +132,7 @@ export class SQLStatement implements SQL {
 /**
  * Tag function for SQL, with some magic.
  *
- * * `` SQL`UPDATE table SET a = ${'hello"'}` ``
+ * * `` SQL`UPDATE table SET a = ${'hello'}` ``
  *   * `` `UPDATE table SET a = 'hello'` ``
  *
  * Values surrounded by `"` or `` ` `` become identifiers:
@@ -146,7 +157,6 @@ export class SQLStatement implements SQL {
  * * `` SQL`INSERT INTO table ("${['a', 'b']}") VALUES (${[1, 2]})` ``
  *   * `` `INSERT INTO table ("a", "b") VALUES (1, 2)` ``
  */
-
 export function SQL(strings: TemplateStringsArray | string[] | string, ...values: SQLValue[]) {
 	if (typeof strings === "string") strings = [strings];
 	return new SQLStatement(strings, values);
@@ -405,7 +415,7 @@ export class MySQLDatabase extends Database<mysql.Pool, mysql.OkPacket> {
 	}
 	override _query(query: string, values: BasicSQLValue[]): Promise<any> {
 		return new Promise((resolve, reject) => {
-			this.connection.query(query, values, (e, results: any) => {
+			this.connection.execute(query, values, (e, results: any) => {
 				if (e) {
 					return reject(new Error(`${e.message} (${query}) (${values as any}) [${e.code}]`));
 				}

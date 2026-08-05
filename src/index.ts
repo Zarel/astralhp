@@ -1,5 +1,4 @@
 export { build, dev, start } from "./astro.ts";
-export { Database } from "./database.ts";
 export { Webroot } from "./webroot.ts";
 
 export type { AstroHPProcess } from "./astro.ts";

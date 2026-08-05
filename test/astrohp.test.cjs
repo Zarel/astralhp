@@ -9,6 +9,7 @@ const test = require("node:test");
 const { pathToFileURL } = require("node:url");
 
 const { build: buildAstroHP } = require("astrohp");
+const { DatabaseTable, PGDatabase, SQL, SQLStatement, SQLiteDatabase } = require("astrohp/database");
 
 const {
 	compileScripts,
@@ -24,11 +25,6 @@ const {
 } = require("../src/apache.ts");
 const { publishDist } = require("../src/build.ts");
 const { cachebust, cachebustScript } = require("../src/cachebuster.ts");
-const {
-	discoverWebroots,
-	findConfigs,
-	selectWebroot,
-} = require("../src/config-loader.ts");
 const { contentType } = require("../src/mime.ts");
 const {
 	AstroHPServer,
@@ -59,6 +55,12 @@ test("exports package entrypoints", () => {
 	assert.equal(typeof astrohp.dev, "function");
 	assert.equal(typeof astrohp.start, "function");
 	assert.equal(typeof astrohp.Webroot, "function");
+	assert.equal(astrohp.Database, undefined);
+	assert.equal(
+		require.resolve("astrohp/database"),
+		path.resolve(__dirname, "../src/database.ts"),
+	);
+	assert.equal(typeof require("astrohp/database").Database, "function");
 	assert.equal(
 		require.resolve("astrohp/components"),
 		path.resolve(__dirname, "../src/components/index.js"),
@@ -69,6 +71,115 @@ test("exports package entrypoints", () => {
 	);
 	assert.match(componentIndex, /default as CSS/);
 	assert.match(componentIndex, /default as JS/);
+});
+
+test("preserves SQL template segments and nested statements", () => {
+	const statement = SQL`SELECT ${1} + ${SQL`${2} * ${3}`} AS result${undefined}`;
+	assert.deepEqual(statement.sql, ["SELECT ", " + ", " * ", " AS result"]);
+	assert.deepEqual(statement.values, [1, 2, 3]);
+
+	const structuralStatement = {
+		__isSQLStatement: true,
+		sql: [" AND third = ", ""],
+		values: [3],
+	};
+	assert.equal(SQL.isSQL(structuralStatement), true);
+	assert.equal(SQL.isSQL({ sql: [], values: [] }), false);
+	const fragments = SQL`WHERE ${[
+		SQL`first = ${1}`,
+		SQL` AND second = ${2}`,
+		structuralStatement,
+	]}`;
+	assert.deepEqual(fragments.sql, ["WHERE first = ", " AND second = ", " AND third = ", ""]);
+	assert.deepEqual(fragments.values, [1, 2, 3]);
+
+	assert.deepEqual(SQL("SELECT 1"), new SQLStatement(["SELECT 1"], []));
+	assert.deepEqual(SQL(["SELECT ", ""], 1), new SQLStatement(["SELECT ", ""], [1]));
+	const appended = SQL("").append(1).appendRaw(" + ").append(2);
+	assert.deepEqual(appended.sql, ["", " + ", ""]);
+	assert.deepEqual(appended.values, [1, 2]);
+});
+
+test("generates portable PostgreSQL table mutations", () => {
+	const database = {
+		type: "pg",
+		prefix: "",
+		queryExec(statement) {
+			if (statement) return statement;
+			return (strings, ...values) => new SQLStatement(strings, values);
+		},
+	};
+	const table = new DatabaseTable(database, "entries", "id");
+	const shape = statement => statement.sql.join("?");
+
+	assert.match(
+		shape(table.upsert({ id: 1, name: "test" })),
+		/ON CONFLICT \("\?"\) DO UPDATE SET/,
+	);
+	assert.match(
+		shape(table.replace({ id: 1, name: "test" })),
+		/ON CONFLICT \("\?"\) DO UPDATE SET/,
+	);
+	assert.doesNotMatch(shape(table.update(1, { name: "test" })), /LIMIT/);
+	assert.doesNotMatch(shape(table.delete(1)), /LIMIT/);
+	assert.doesNotMatch(
+		shape(table.updateOne(SQL`"name" = ${"test"}`)`WHERE "id" = ${1}`),
+		/LIMIT/,
+	);
+	assert.doesNotMatch(shape(table.deleteOne()`WHERE "id" = ${1}`), /LIMIT/);
+});
+
+test("does not load database drivers when importing the database module", () => {
+	const databaseURL = pathToFileURL(path.resolve(__dirname, "../src/database.ts")).href;
+	const script = [
+		'import { createRequire } from "node:module";',
+		"const require = createRequire(import.meta.url);",
+		`await import(${JSON.stringify(databaseURL)});`,
+		"const loaded = {",
+		'	mysql: Boolean(require.cache[require.resolve("mysql2")]),',
+		'	pg: Boolean(require.cache[require.resolve("pg")]),',
+		'\tsqlite: process.moduleLoadList.some(name => name.toLowerCase().includes("sqlite")),',
+		"};",
+		"console.log(JSON.stringify(loaded));",
+	].join("\n");
+	const result = spawnSync(process.execPath, ["--input-type=module", "--eval", script], {
+		cwd: path.resolve(__dirname, ".."),
+		encoding: "utf8",
+	});
+
+	assert.equal(result.status, 0, result.stderr);
+	assert.deepEqual(JSON.parse(result.stdout), {
+		mysql: false,
+		pg: false,
+		sqlite: false,
+	});
+});
+
+test("parses PostgreSQL int8 values as numbers", async t => {
+	const pg = require("pg");
+	t.after(() => {
+		pg.defaults.parseInt8 = false;
+	});
+	const database = new PGDatabase({});
+	t.after(() => database.close());
+
+	const parseInt8 = pg.types.getTypeParser(pg.types.builtins.INT8, "text");
+	const parseInt8Array = pg.types.getTypeParser(1016, "text");
+	assert.equal(parseInt8("42"), 42);
+	assert.deepEqual(parseInt8Array("{1,2,NULL}"), [1, 2, null]);
+});
+
+test("queries SQLite through the database abstraction", async t => {
+	const database = new SQLiteDatabase();
+	t.after(() => database.close());
+
+	await database.queryExec(SQL`CREATE TABLE entries (id INTEGER PRIMARY KEY, name TEXT)`);
+	const result = await database.queryExec(SQL`INSERT INTO entries (name) VALUES (${"test"})`);
+	assert.deepEqual(result, { affectedRows: 1, insertId: 1 });
+	assert.deepEqual(
+		await database.query(SQL`SELECT name FROM entries WHERE id = ${result.insertId}`),
+		[{ name: "test" }],
+	);
 });
 
 test("loads typed configuration from the working directory", async t => {
@@ -88,14 +199,16 @@ test("loads typed configuration from the working directory", async t => {
 		].join("\n"),
 	);
 
+	const expected = new Webroot({
+		webroot: "public",
+		adapter: "apache-proxy",
+		port: 9001,
+	}, filename);
 	assert.deepEqual(
-		await selectWebroot(undefined, project),
-		new Webroot({
-			webroot: "public",
-			adapter: "apache-proxy",
-			port: 9001,
-		}, filename),
+		await Webroot.requireOne(project),
+		expected,
 	);
+	assert.deepEqual(await Webroot.resolve(webroot, project), expected);
 });
 
 test("finds configurations in descendants and ancestor directories", async t => {
@@ -124,29 +237,33 @@ test("finds configurations in descendants and ancestor directories", async t => 
 		'throw new Error("ignored configuration executed");',
 	);
 
-	assert.deepEqual(findConfigs(workspace), [
-		path.join(alpha, "astrohp.mts"),
-		path.join(beta, ".astrohp.mts"),
-		path.join(project, ".astrohp.mts"),
-	]);
+	const paths = [
+		path.join(alpha, "public"),
+		beta,
+		path.join(project, "parent-public"),
+	];
 	assert.deepEqual(
-		(await discoverWebroots(workspace)).map(webroot => webroot.path),
-		[
-			path.join(alpha, "public"),
-			beta,
-			path.join(project, "parent-public"),
-		],
+		(await Webroot.search(workspace)).map(webroot => webroot.path),
+		paths,
+	);
+	assert.deepEqual(
+		(await Webroot.requireAll(workspace)).map(webroot => webroot.path),
+		paths,
+	);
+	await assert.rejects(
+		() => Webroot.requireOne(workspace),
+		/Found multiple AstroHP webroots/,
 	);
 });
 
-test("rejects both configuration names in one directory", t => {
+test("rejects both configuration names in one directory", async t => {
 	const project = fs.mkdtempSync(path.join(os.tmpdir(), "astrohp-test-"));
 	t.after(() => fs.rmSync(project, { recursive: true, force: true }));
 	fs.writeFileSync(path.join(project, "astrohp.mts"), "export const config = {};");
 	fs.writeFileSync(path.join(project, ".astrohp.mts"), "export const config = {};");
 
-	assert.throws(
-		() => findConfigs(project),
+	await assert.rejects(
+		() => Webroot.search(project),
 		/Found both astrohp\.mts and \.astrohp\.mts/,
 	);
 });
@@ -156,8 +273,19 @@ test("uses the requested directory and node adapter without configuration", asyn
 	t.after(() => fs.rmSync(webroot, { recursive: true, force: true }));
 
 	assert.deepEqual(
-		await selectWebroot(webroot, webroot),
+		await Webroot.resolve(webroot, webroot),
 		new Webroot({ webroot }),
+	);
+});
+
+test("requires at least one discovered webroot", async t => {
+	const directory = fs.mkdtempSync(path.join(os.tmpdir(), "astrohp-test-"));
+	t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+
+	assert.deepEqual(await Webroot.search(directory), []);
+	await assert.rejects(
+		() => Webroot.requireAll(directory),
+		/Could not find astrohp\.mts or \.astrohp\.mts/,
 	);
 });
 
@@ -228,7 +356,7 @@ test("rejects invalid executable configuration", async t => {
 	);
 
 	await assert.rejects(
-		() => selectWebroot(undefined, project),
+		() => Webroot.requireOne(project),
 		/Unknown AstroHP configuration option: unknown/,
 	);
 });
