@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
-import { serverPort } from "./live-server.ts";
-import type { AstrohpResolvedRoutes, Webroot } from "./webroot.ts";
+import { serverPort } from "./live-server.js";
+import type { AstrohpResolvedRoutes, Webroot } from "./webroot.js";
 
 const BEGIN_MARKER = "# ===== BEGIN ASTROHP =====";
 const END_MARKER = "# ===== END ASTROHP =====";
@@ -80,7 +80,7 @@ ${rules.join("\n")}`;
 }
 
 export function apacheBlock(
-	port = apachePort(),
+	port: number = apachePort(),
 	routes: readonly ApacheRoute[] = [],
 ): string {
 	if (!Number.isInteger(port) || port < 1 || port > 65535) {
@@ -178,7 +178,7 @@ export function replaceApacheBlock(
 
 export function writeApacheConfig(
 	webroot: Webroot,
-	port = apachePort(),
+	port: number = apachePort(),
 	routes: readonly ApacheRoute[] = [],
 ): string {
 	const filename = path.join(webroot.path, ".htaccess");
@@ -216,7 +216,7 @@ export function writeApacheConfig(
 export function generateApacheConfig(
 	webroot: Webroot,
 	resolved: AstrohpResolvedRoutes,
-	port = apachePort(),
+	port: number = apachePort(),
 ): string {
 	const routes = resolveApacheRoutes(resolved);
 	return writeApacheConfig(webroot, port, routes);

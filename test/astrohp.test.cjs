@@ -15,22 +15,22 @@ const {
 	compileScripts,
 	scanBabelSources,
 	scriptOutputPath,
-} = require("../src/babel.ts");
+} = require("../dist/babel.js");
 const {
 	apacheRoute,
 	apacheBlock,
 	replaceApacheBlock,
 	resolveApacheRoutes,
 	writeApacheConfig,
-} = require("../src/apache.ts");
-const { publishDist } = require("../src/build.ts");
-const { cachebust, cachebustScript } = require("../src/cachebuster.ts");
-const { contentType } = require("../src/mime.ts");
+} = require("../dist/apache.js");
+const { publishDist } = require("../dist/build.js");
+const { cachebust, cachebustScript } = require("../dist/cachebuster.js");
+const { contentType } = require("../dist/mime.js");
 const {
 	AstroHPServer,
 	serverPort,
-} = require("../src/live-server.ts");
-const { astrohpIntegration, Webroot } = require("../src/webroot.ts");
+} = require("../dist/live-server.js");
+const { astrohpIntegration, Webroot } = require("../dist/webroot.js");
 
 const example = path.resolve(__dirname, "../example");
 const exampleWebroot = new Webroot({ webroot: example });
@@ -48,7 +48,7 @@ const dynamicAstroRoute = {
 test("exports package entrypoints", () => {
 	assert.equal(
 		require.resolve("astrohp"),
-		path.resolve(__dirname, "../src/index.ts"),
+		path.resolve(__dirname, "../dist/index.js"),
 	);
 	const astrohp = require("astrohp");
 	assert.equal(typeof astrohp.build, "function");
@@ -58,19 +58,102 @@ test("exports package entrypoints", () => {
 	assert.equal(astrohp.Database, undefined);
 	assert.equal(
 		require.resolve("astrohp/database"),
-		path.resolve(__dirname, "../src/database.ts"),
+		path.resolve(__dirname, "../dist/database.js"),
 	);
 	assert.equal(typeof require("astrohp/database").Database, "function");
 	assert.equal(
 		require.resolve("astrohp/components"),
-		path.resolve(__dirname, "../src/components/index.js"),
+		path.resolve(__dirname, "../dist/components/index.js"),
 	);
 	const componentIndex = fs.readFileSync(
-		path.resolve(__dirname, "../src/components/index.js"),
+		path.resolve(__dirname, "../dist/components/index.js"),
 		"utf8",
 	);
 	assert.match(componentIndex, /default as CSS/);
 	assert.match(componentIndex, /default as JS/);
+});
+
+test("loads the compiled package from node_modules", t => {
+	const project = fs.mkdtempSync(path.join(__dirname, "../.astrohp-test-installed-"));
+	const installed = path.join(project, "node_modules", "astrohp");
+	t.after(() => fs.rmSync(project, { recursive: true, force: true }));
+	fs.mkdirSync(installed, { recursive: true });
+	fs.copyFileSync(
+		path.resolve(__dirname, "../package.json"),
+		path.join(installed, "package.json"),
+	);
+	fs.cpSync(
+		path.resolve(__dirname, "../dist"),
+		path.join(installed, "dist"),
+		{ recursive: true },
+	);
+
+	const source = path.join(project, "index.ts");
+	fs.writeFileSync(
+		source,
+		[
+			'import { Webroot, type Config } from "astrohp";',
+			'import { Database, SQL } from "astrohp/database";',
+			'const config: Config = { webroot: "/tmp" };',
+			'new Webroot(config);',
+			'const database: typeof Database = Database;',
+			'SQL`SELECT ${database.name}`;',
+		].join("\n"),
+	);
+	const typecheck = spawnSync(
+		path.resolve(__dirname, "../node_modules/.bin/tsc"),
+		[
+			"--noEmit",
+			"--ignoreConfig",
+			"--skipLibCheck",
+			"--strict",
+			"--module", "ESNext",
+			"--moduleResolution", "Bundler",
+			"--target", "ES2024",
+			source,
+		],
+		{ cwd: project, encoding: "utf8" },
+	);
+	assert.equal(typecheck.status, 0, typecheck.stderr || typecheck.stdout);
+
+	const componentSource = path.join(project, "component.ts");
+	fs.writeFileSync(
+		componentSource,
+		'import { CSS, JS } from "astrohp/components"; void [CSS, JS];',
+	);
+	const componentTypecheck = spawnSync(
+		path.resolve(__dirname, "../node_modules/.bin/tsc"),
+		[
+			"--noEmit",
+			"--ignoreConfig",
+			"--strict",
+			"--module", "ESNext",
+			"--moduleResolution", "Bundler",
+			"--target", "ES2024",
+			componentSource,
+		],
+		{ cwd: project, encoding: "utf8" },
+	);
+	assert.equal(
+		componentTypecheck.status,
+		0,
+		componentTypecheck.stderr || componentTypecheck.stdout,
+	);
+
+	const runtime = spawnSync(
+		process.execPath,
+		[
+			"--input-type=module",
+			"--eval",
+			[
+				'import { Webroot } from "astrohp";',
+				'import { Database } from "astrohp/database";',
+				'if (!Webroot || !Database) process.exit(1);',
+			].join("\n"),
+		],
+		{ cwd: project, encoding: "utf8" },
+	);
+	assert.equal(runtime.status, 0, runtime.stderr);
 });
 
 test("preserves SQL template segments and nested statements", () => {
@@ -130,7 +213,7 @@ test("generates portable PostgreSQL table mutations", () => {
 });
 
 test("does not load database drivers when importing the database module", () => {
-	const databaseURL = pathToFileURL(path.resolve(__dirname, "../src/database.ts")).href;
+	const databaseURL = pathToFileURL(path.resolve(__dirname, "../dist/database.js")).href;
 	const script = [
 		'import { createRequire } from "node:module";',
 		"const require = createRequire(import.meta.url);",

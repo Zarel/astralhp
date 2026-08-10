@@ -1,7 +1,7 @@
 ---
 import type { HTMLAttributes } from "astro/types";
-import { cachebust } from "../cachebuster.ts";
-import { Webroot } from "../webroot.ts";
+import { cachebust } from "../cachebuster.js";
+import { Webroot } from "../webroot.js";
 
 type Props = Omit<HTMLAttributes<"link">, "href" | "rel"> & {
 	src: string;

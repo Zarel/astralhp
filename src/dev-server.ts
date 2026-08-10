@@ -1,12 +1,16 @@
 import type * as astro from "astro";
 import fs from "node:fs";
 import type * as vite from "vite";
-import { babelWatcher, compileScripts } from "./babel.ts";
-import { contentType } from "./mime.ts";
-import type { Webroot } from "./webroot.ts";
+import { babelWatcher, compileScripts } from "./babel.js";
+import { contentType } from "./mime.js";
+import type { Webroot } from "./webroot.js";
 
 export interface DevServerOptions {
 	port?: number;
+}
+
+export interface AstroHPDevServer {
+	stop(): Promise<void>;
 }
 
 function isCompiledScriptRequest(requestUrl: string | undefined): boolean {
@@ -73,7 +77,7 @@ export async function startDev(
 	webroot: Webroot,
 	config: astro.AstroInlineConfig,
 	options: DevServerOptions = {},
-) {
+): Promise<AstroHPDevServer> {
 	process.env.ASTRO_TELEMETRY_DISABLED ||= "1";
 	await compileScripts(webroot);
 	const { dev } = await import("astro");

@@ -5,20 +5,40 @@
 	"license": "MIT",
 	"author": "Guangcong Luo <guangcongluo@gmail.com> (http://guangcongluo.com)",
 	"type": "module",
+	"types": "./dist/index.d.ts",
+	"typesVersions": {
+		"*": {
+			"components": ["dist/components/index.d.ts"],
+			"database": ["dist/database.d.ts"]
+		}
+	},
 	"bin": {
 		"astrohp": "astrohp"
 	},
 	"exports": {
-		".": "./src/index.ts",
-		"./components": "./src/components/index.ts",
-		"./database": "./src/database.ts"
+		".": {
+			"types": "./dist/index.d.ts",
+			"default": "./dist/index.js"
+		},
+		"./components": {
+			"types": "./dist/components/index.d.ts",
+			"default": "./dist/components/index.js"
+		},
+		"./database": {
+			"types": "./dist/database.d.ts",
+			"default": "./dist/database.js"
+		}
 	},
 	"files": [
 		"astrohp",
-		"src"
+		"dist"
 	],
 	"scripts": {
-		"test": "npm run typecheck && node --test",
+		"prebuild": "node scripts/package-assets.mjs clean",
+		"build": "tsc -p tsconfig.build.json && node scripts/package-assets.mjs copy && npm run check:astro",
+		"check:astro": "astro-check -- -- --tsconfig tsconfig.astro.json",
+		"prepare": "npm run build",
+		"test": "npm run typecheck && npm run build && node --test",
 		"typecheck": "tsc"
 	},
 	"engines": {
@@ -32,13 +52,17 @@
 		"@babel/preset-env": "^7.26.9",
 		"@babel/preset-typescript": "^7.27.0",
 		"astro": "^7.1.5",
-		"babel-plugin-remove-import-export": "^1.1.1"
+		"babel-plugin-remove-import-export": "^1.1.1",
+		"mysql2": "^3.23.0",
+		"pg": "^8.22.0",
+		"@types/pg": "^8.20.0"
 	},
 	"devDependencies": {
+		"@astrojs/check": "^0.9.10",
 		"@types/babel__core": "^7.20.5",
 		"@types/node": "^24.13.3",
 		"dprint": "^0.55.2",
-		"typescript": "^7.0.2",
+		"typescript": "^6.0.3",
 		"vite": "^8.1.5"
 	},
 	"allowScripts": {

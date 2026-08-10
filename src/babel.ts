@@ -2,7 +2,7 @@ import * as babel from "@babel/core";
 import fs from "node:fs";
 import path from "node:path";
 import type * as vite from "vite";
-import type { Webroot } from "./webroot.ts";
+import type { Webroot } from "./webroot.js";
 
 const ASTROHP_ROOT = path.resolve(import.meta.dirname, "..");
 const PRIVATE_DIRECTORIES = new Set(["node_modules"]);
@@ -120,7 +120,7 @@ function writeCompiledFile(
 export async function compileScript(
 	webroot: Webroot,
 	source: string,
-	dist = webroot.dist,
+	dist: string = webroot.dist,
 ): Promise<string | null> {
 	const output = scriptOutputPath(webroot.path, dist, source);
 
@@ -144,7 +144,7 @@ export async function compileScript(
 
 export async function compileScripts(
 	webroot: Webroot,
-	dist = webroot.dist,
+	dist: string = webroot.dist,
 ): Promise<string[]> {
 	const sources = scanBabelSources(webroot.path);
 	if (!sources.length) return [];

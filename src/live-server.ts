@@ -3,8 +3,8 @@ import http from "node:http";
 import type { AddressInfo } from "node:net";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
-import { contentType } from "./mime.ts";
-import type { Webroot } from "./webroot.ts";
+import { contentType } from "./mime.js";
+import type { Webroot } from "./webroot.js";
 
 const DOCUMENT_ROOT_HEADER = "x-astrohp-document-root";
 

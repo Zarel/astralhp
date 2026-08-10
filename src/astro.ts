@@ -1,9 +1,9 @@
 import { type ChildProcess, fork } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
-import type { DevServerOptions } from "./dev-server.ts";
-import type { LiveServerOptions } from "./live-server.ts";
-import type { Webroot } from "./webroot.ts";
+import type { DevServerOptions } from "./dev-server.js";
+import type { LiveServerOptions } from "./live-server.js";
+import type { Webroot } from "./webroot.js";
 
 interface SerializedWebroot {
 	path: string;
@@ -29,7 +29,7 @@ type WorkerMessage =
 	| { type: "error"; error: SerializedError };
 
 const WORKER_ENTRYPOINT = fileURLToPath(
-	new URL("./astro-worker.ts", import.meta.url),
+	new URL("./astro-worker.js", import.meta.url),
 );
 
 function serializeWebroot(webroot: Webroot): SerializedWebroot {

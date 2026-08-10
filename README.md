@@ -41,7 +41,8 @@ export const config: import("astrohp").Config = {
 ```
 
 In most text editors, you can ctrl+click or cmd+click on "Config" to see
-possible config options. If you can't, see `src/config.d.ts` for options.
+possible config options. If yours doesn't support that, see
+`src/config.d.ts` for options.
 
 With a config file in the working directory, commands can omit the directory:
 

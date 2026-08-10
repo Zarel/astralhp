@@ -1,7 +1,7 @@
 import path from "node:path";
 
-import { build, dev, start } from "./index.ts";
-import { Webroot } from "./webroot.ts";
+import { build, dev, start } from "./index.js";
+import { Webroot } from "./webroot.js";
 
 function usage() {
 	return "Usage: astrohp [<dev|build|start> [directory]]";

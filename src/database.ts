@@ -157,13 +157,24 @@ export class SQLStatement implements SQL {
  * * `` SQL`INSERT INTO table ("${['a', 'b']}") VALUES (${[1, 2]})` ``
  *   * `` `INSERT INTO table ("a", "b") VALUES (1, 2)` ``
  */
-export function SQL(strings: TemplateStringsArray | string[] | string, ...values: SQLValue[]) {
+function createSQL(
+	strings: TemplateStringsArray | string[] | string,
+	...values: SQLValue[]
+): SQLStatement {
 	if (typeof strings === "string") strings = [strings];
 	return new SQLStatement(strings, values);
 }
-SQL.isSQL = (value: unknown): value is SQL => {
+
+function isSQL(value: unknown): value is SQL {
 	return (value as SQL | undefined)?.__isSQLStatement === true;
-};
+}
+
+interface SQLTag {
+	(strings: TemplateStringsArray | string[] | string, ...values: SQLValue[]): SQLStatement;
+	isSQL(value: unknown): value is SQL;
+}
+
+export const SQL: SQLTag = Object.assign(createSQL, { isSQL });
 
 export interface ResultRow {
 	[k: string]: BasicSQLValue;
@@ -171,7 +182,7 @@ export interface ResultRow {
 
 export const connectedDatabases: Database<any, any>[] = [];
 
-export async function closeDatabases() {
+export async function closeDatabases(): Promise<void> {
 	const databases = connectedDatabases.splice(0);
 	await Promise.all(databases.map(database => database.close()));
 }
@@ -238,7 +249,7 @@ export class DatabaseTable<Row, DB extends Database<any, any>> {
 		this.name = db.prefix + name;
 		this.primaryKeyName = primaryKeyName;
 	}
-	escapeId(param: string) {
+	escapeId(param: string): string {
 		return this.db.escapeId(param);
 	}
 
@@ -328,17 +339,20 @@ export class DatabaseTable<Row, DB extends Database<any, any>> {
 
 	// high-level
 
-	insert(partialRow: PartialOrSQL<Row>, where?: SQL) {
+	insert(partialRow: PartialOrSQL<Row>, where?: SQL): Promise<OkPacketOf<DB>> {
 		return this.queryExec()`INSERT INTO "${this.name}" (${partialRow as SQLValue}) ${where}`;
 	}
-	insertIgnore(partialRow: PartialOrSQL<Row>, where?: SQL) {
+	insertIgnore(partialRow: PartialOrSQL<Row>, where?: SQL): Promise<OkPacketOf<DB>> {
 		if (this.db.type === "sqlite") {
 			// sqlite usually doesn't support DELETE ... LIMIT 1
 			return this.queryExec()`INSERT OR IGNORE INTO "${this.name}" (${partialRow as SQLValue}) ${where}`;
 		}
 		return this.queryExec()`INSERT IGNORE INTO "${this.name}" (${partialRow as SQLValue}) ${where}`;
 	}
-	async tryInsert(partialRow: PartialOrSQL<Row>, where?: SQL) {
+	async tryInsert(
+		partialRow: PartialOrSQL<Row>,
+		where?: SQL,
+	): Promise<OkPacketOf<DB> | undefined> {
 		try {
 			return await this.insert(partialRow, where);
 		} catch (err: any) {
@@ -352,7 +366,11 @@ export class DatabaseTable<Row, DB extends Database<any, any>> {
 			throw err;
 		}
 	}
-	upsert(partialRow: PartialOrSQL<Row>, partialUpdate = partialRow, where?: SQL) {
+	upsert(
+		partialRow: PartialOrSQL<Row>,
+		partialUpdate: PartialOrSQL<Row> = partialRow,
+		where?: SQL,
+	): Promise<OkPacketOf<DB>> {
 		if (this.db.type === "sqlite" || this.db.type === "pg") {
 			if (!this.primaryKeyName) throw new Error(`Cannot upsert() without a single-column primary key`);
 			return this
@@ -361,12 +379,16 @@ export class DatabaseTable<Row, DB extends Database<any, any>> {
 		return this
 			.queryExec()`INSERT INTO "${this.name}" (${partialRow as any}) ON DUPLICATE KEY UPDATE ${partialUpdate as any} ${where}`;
 	}
-	set(primaryKey: BasicSQLValue, partialRow: PartialOrSQL<Row>, where?: SQL) {
+	set(
+		primaryKey: BasicSQLValue,
+		partialRow: PartialOrSQL<Row>,
+		where?: SQL,
+	): Promise<OkPacketOf<DB>> {
 		if (!this.primaryKeyName) throw new Error(`Cannot set() without a single-column primary key`);
 		partialRow[this.primaryKeyName] = primaryKey as any;
 		return this.replace(partialRow, where);
 	}
-	replace(partialRow: PartialOrSQL<Row>, where?: SQL) {
+	replace(partialRow: PartialOrSQL<Row>, where?: SQL): Promise<OkPacketOf<DB>> {
 		if (this.db.type === "pg") {
 			if (!this.primaryKeyName) throw new Error(`Cannot replace() without a single-column primary key`);
 			return this
@@ -374,15 +396,18 @@ export class DatabaseTable<Row, DB extends Database<any, any>> {
 		}
 		return this.queryExec()`REPLACE INTO "${this.name}" (${partialRow as SQLValue}) ${where}`;
 	}
-	get(primaryKey: BasicSQLValue, entries?: (keyof Row & string)[] | SQL) {
+	get(
+		primaryKey: BasicSQLValue,
+		entries?: (keyof Row & string)[] | SQL,
+	): Promise<Row | undefined> {
 		if (!this.primaryKeyName) throw new Error(`Cannot get() without a single-column primary key`);
 		return this.selectOne(entries)`WHERE "${this.primaryKeyName}" = ${primaryKey}`;
 	}
-	delete(primaryKey: BasicSQLValue) {
+	delete(primaryKey: BasicSQLValue): Promise<OkPacketOf<DB>> {
 		if (!this.primaryKeyName) throw new Error(`Cannot delete() without a single-column primary key`);
 		return this.deleteAll()`WHERE "${this.primaryKeyName}" = ${primaryKey}`;
 	}
-	update(primaryKey: BasicSQLValue, data: PartialOrSQL<Row>) {
+	update(primaryKey: BasicSQLValue, data: PartialOrSQL<Row>): Promise<OkPacketOf<DB>> {
 		if (!this.primaryKeyName) throw new Error(`Cannot update() without a single-column primary key`);
 		return this.updateAll(data)`WHERE "${this.primaryKeyName}" = ${primaryKey}`;
 	}
@@ -433,10 +458,10 @@ export class MySQLDatabase extends Database<mysql.Pool, mysql.OkPacket> {
 	override _queryExec(sql: string, values: BasicSQLValue[]): Promise<mysql.OkPacket> {
 		return this._query(sql, values);
 	}
-	override escapeId(id: string) {
+	override escapeId(id: string): string {
 		return loadMySQL().escapeId(id);
 	}
-	override close() {
+	override close(): Promise<void> {
 		return new Promise<void>((resolve, reject) => {
 			this.connection.end(err => err ? reject(err) : resolve());
 		});
@@ -465,16 +490,19 @@ export class PGDatabase extends Database<pg.Pool, { affectedRows: number | null 
 		}
 		return [sql, values];
 	}
-	override _query(query: string, values: BasicSQLValue[]) {
+	override _query(query: string, values: BasicSQLValue[]): Promise<any[]> {
 		return this.connection.query(query, values).then(res => res.rows);
 	}
-	override _queryExec(query: string, values: BasicSQLValue[]) {
+	override _queryExec(
+		query: string,
+		values: BasicSQLValue[],
+	): Promise<{ affectedRows: number | null }> {
 		return this.connection.query<never>(query, values).then(res => ({ affectedRows: res.rowCount }));
 	}
-	override escapeId(id: string) {
+	override escapeId(id: string): string {
 		return loadPG().escapeIdentifier(id);
 	}
-	override close() {
+	override close(): Promise<void> {
 		return this.connection.end();
 	}
 }
@@ -490,7 +518,7 @@ export interface SQLiteResult {
 }
 
 export class SQLiteDatabase extends Database<import("node:sqlite").DatabaseSync, SQLiteResult> {
-	override type = "sqlite";
+	override type = "sqlite" as const;
 
 	constructor(config: SQLiteDatabaseConfig = {}) {
 		super(new (loadSQLite().DatabaseSync)(config.path || ":memory:"), config.prefix || "");
@@ -512,14 +540,17 @@ export class SQLiteDatabase extends Database<import("node:sqlite").DatabaseSync,
 		return [sql, values];
 	}
 
-	override _query(query: string, values: BasicSQLValue[]) {
+	override _query(
+		query: string,
+		values: BasicSQLValue[],
+	): Promise<Record<string, unknown>[]> {
 		return Promise.resolve().then(() => {
 			const rows = this.connection.prepare(query).all(...values);
 			return rows.map(row => ({ ...(row as Record<string, unknown>) }));
 		});
 	}
 
-	override _queryExec(query: string, values: BasicSQLValue[]) {
+	override _queryExec(query: string, values: BasicSQLValue[]): Promise<SQLiteResult> {
 		return Promise.resolve().then(() => {
 			const result = this.connection.prepare(query).run(...values);
 			return {
@@ -529,11 +560,11 @@ export class SQLiteDatabase extends Database<import("node:sqlite").DatabaseSync,
 		});
 	}
 
-	override escapeId(id: string) {
+	override escapeId(id: string): string {
 		return `"${id.replace(/"/g, '""')}"`;
 	}
 
-	override close() {
+	override close(): Promise<void> {
 		return Promise.resolve().then(() => this.connection.close());
 	}
 }

@@ -1,10 +1,10 @@
 import type * as astro from "astro";
 import fs from "node:fs";
 import path from "node:path";
-import { generateApacheConfig } from "./apache.ts";
-import { compileScripts } from "./babel.ts";
-import { serverPort } from "./live-server.ts";
-import type { AstrohpResolvedRoutes, Webroot } from "./webroot.ts";
+import { generateApacheConfig } from "./apache.js";
+import { compileScripts } from "./babel.js";
+import { serverPort } from "./live-server.js";
+import type { AstrohpResolvedRoutes, Webroot } from "./webroot.js";
 
 type DistPaths = Pick<
 	Webroot,

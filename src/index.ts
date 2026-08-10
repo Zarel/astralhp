@@ -1,7 +1,7 @@
-export { build, dev, start } from "./astro.ts";
-export { Webroot } from "./webroot.ts";
+export { build, dev, start } from "./astro.js";
+export { Webroot } from "./webroot.js";
 
-export type { AstroHPProcess } from "./astro.ts";
+export type { AstroHPProcess } from "./astro.js";
 export type { Adapter, Config } from "./config.d.ts";
-export type { DevServerOptions } from "./dev-server.ts";
-export type { LiveServerOptions } from "./live-server.ts";
+export type { DevServerOptions } from "./dev-server.js";
+export type { LiveServerOptions } from "./live-server.js";

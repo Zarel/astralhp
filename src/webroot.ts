@@ -186,7 +186,7 @@ export class Webroot {
 	}
 
 	static async search(
-		directory = process.cwd(),
+		directory: string = process.cwd(),
 	): Promise<Webroot[]> {
 		directory = path.resolve(directory);
 		const configs: string[] = [];
@@ -218,7 +218,7 @@ export class Webroot {
 	}
 
 	static async requireAll(
-		directory = process.cwd(),
+		directory: string = process.cwd(),
 	): Promise<Webroot[]> {
 		const webroots = await Webroot.search(directory);
 		if (!webroots.length) {
@@ -230,7 +230,7 @@ export class Webroot {
 	}
 
 	static async requireOne(
-		directory = process.cwd(),
+		directory: string = process.cwd(),
 	): Promise<Webroot> {
 		const webroots = await Webroot.requireAll(directory);
 		if (webroots.length > 1) {
@@ -243,7 +243,7 @@ export class Webroot {
 
 	static async resolve(
 		root: string,
-		workingDirectory = process.cwd(),
+		workingDirectory: string = process.cwd(),
 	): Promise<Webroot> {
 		const requestedRoot = path.resolve(workingDirectory, root);
 		const matches = (await Webroot.search(requestedRoot))

@@ -4,16 +4,16 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type * as vite from "vite";
 
-import { buildSite } from "./build.ts";
-import { type DevServerOptions, startDev } from "./dev-server.ts";
-import { type AstroHPServer, type LiveServerOptions, serverPort, startLive } from "./live-server.ts";
+import { buildSite } from "./build.js";
+import { type DevServerOptions, startDev } from "./dev-server.js";
+import { type AstroHPServer, type LiveServerOptions, serverPort, startLive } from "./live-server.js";
 import {
 	type AstrohpConfigOptions,
 	astrohpIntegration,
 	type AstrohpPage,
 	type AstrohpResolvedRoutes,
 	Webroot,
-} from "./webroot.ts";
+} from "./webroot.js";
 
 interface SerializedWebroot {
 	path: string;
