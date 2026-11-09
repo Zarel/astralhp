@@ -176,7 +176,7 @@ export class Webroot {
 	private static async importConfig(filename: string): Promise<Config> {
 		const url = pathToFileURL(filename);
 		url.searchParams.set("mtime", String(fs.statSync(filename).mtimeMs));
-		const module = await import(url.href) as Record<string, unknown>;
+		const module = await import(/* @vite-ignore */ url.href) as Record<string, unknown>;
 		if (!("config" in module)) {
 			throw new Error(
 				`${filename} must export a configuration object named "config"`,
