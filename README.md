@@ -106,6 +106,36 @@ The `.htaccess` expects the webroot to be the Apache `DocumentRoot`, Apache
 (These are all default settings except `FileInfo`, which is the one that allows
 `.htaccess` files in the first place, which is usually enabled by shared hosts.)
 
+## CGI on Apache
+
+`apache-cgi` lets you run dynamic pages on shared hosts that don't let you run
+a persistent server:
+
+```ts
+export const config: import("astrohp").Config = {
+	webroot: "www",
+	adapter: "apache-cgi",
+	// Optional if bun is already on Apache's PATH:
+	runtimePath: "/home/username/.bun/bin/bun",
+};
+```
+
+Compatible with both Node and Bun, although we strongly recommend Bun because
+startup times are important if you're going to spawn a new process on every
+pageview.
+
+Use a Node version that meets AstroHP's requirements (currently 22.18+).
+
+The host needs to support:
+- custom CGI executables
+- a compatible Bun or Node, or let you install your own
+- `mod_cgi` or `mod_cgid`
+- `mod_rewrite`
+- `Options +ExecCGI` in the webroot
+- `.htaccess` with `Options` overrides
+
+`runtimePath` must not contain whitespace.
+
 ## Components
 
 AstroHP supports Astro's usual ways to include CSS and JS, but if you would
@@ -196,3 +226,12 @@ Each webroot contains one hidden cache directory:
 ```
 
 You probably want to add `.caches/` to your `.gitignore`.
+
+## Developing AstroHP
+
+Run `npm run build` to compile AstroHP and check its Astro components. Run
+`npm test` for the full test suite.
+
+# TODO
+
+- `astrohp init`

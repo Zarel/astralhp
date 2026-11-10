@@ -24,17 +24,6 @@ function isCompiledScriptRequest(requestUrl: string | undefined): boolean {
 	}
 }
 
-function isSourceRequest(requestUrl: string | undefined): boolean {
-	if (!requestUrl) return false;
-	try {
-		return /\.tsx?$/i.test(
-			new URL(requestUrl, "http://astrohp.local").pathname,
-		);
-	} catch {
-		return false;
-	}
-}
-
 export function staticFiles(webroot: Webroot): vite.Plugin {
 	return {
 		name: "astrohp:static-files",
@@ -47,12 +36,8 @@ export function staticFiles(webroot: Webroot): vite.Plugin {
 					return;
 				}
 				if (request.method !== "GET" && request.method !== "HEAD") return next();
-				if (isSourceRequest(request.url)) {
-					response.statusCode = 404;
-					response.end();
-					return;
-				}
-
+				// resolveStaticFile excludes TypeScript sources. Let Vite transform
+				// module imports of those files instead of serving them verbatim.
 				const filename = (
 					isCompiledScriptRequest(request.url) &&
 					webroot.resolveDistFile(request.url)

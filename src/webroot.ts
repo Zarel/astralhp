@@ -7,7 +7,7 @@ import type { Adapter, Config } from "./config.d.ts";
 const CONFIG_FILENAMES = ["astrohp.mts", ".astrohp.mts"] as const;
 const IGNORED_DIRECTORIES = new Set(["node_modules", ".git", ".caches"]);
 const PRIVATE_DIRECTORIES = new Set([".caches", ".server", "node_modules"]);
-const ADAPTERS = new Set<Adapter>(["node", "apache-proxy"]);
+const ADAPTERS = new Set<Adapter>(["node", "apache-proxy", "apache-cgi"]);
 
 export function validateConfig(value: any, filename: string): Config {
 	// note to self: if this gets too complicated later, switch to Zod
@@ -16,7 +16,7 @@ export function validateConfig(value: any, filename: string): Config {
 	}
 
 	for (const key of Object.keys(value)) {
-		if (key !== "webroot" && key !== "adapter" && key !== "port") {
+		if (key !== "webroot" && key !== "adapter" && key !== "port" && key !== "runtimePath") {
 			throw new Error(`Unknown AstroHP configuration option: ${key}`);
 		}
 	}
@@ -30,7 +30,7 @@ export function validateConfig(value: any, filename: string): Config {
 		value.adapter !== undefined &&
 		(typeof value.adapter !== "string" || !ADAPTERS.has(value.adapter as Adapter))
 	) {
-		throw new Error('AstroHP configuration option adapter must be "node" or "apache-proxy"');
+		throw new Error('AstroHP configuration option adapter must be "node", "apache-proxy", or "apache-cgi"');
 	}
 	if (
 		value.port !== undefined &&
@@ -38,6 +38,12 @@ export function validateConfig(value: any, filename: string): Config {
 			value.port < 0 || value.port > 65535)
 	) {
 		throw new Error("AstroHP configuration option port must be an integer from 0 to 65535");
+	}
+	if (
+		value.runtimePath !== undefined && (typeof value.runtimePath !== "string" ||
+			!path.isAbsolute(value.runtimePath) || /[\s\0]/.test(value.runtimePath))
+	) {
+		throw new Error("AstroHP configuration option runtimePath must be an absolute path without whitespace");
 	}
 	return value as Config;
 }
@@ -105,6 +111,7 @@ export class Webroot {
 	readonly configFile: string | null;
 	readonly adapter: Adapter;
 	readonly port: number;
+	readonly runtimePath: string | undefined;
 	readonly caches: string;
 	readonly astroCache: string;
 	readonly viteCache: string;
@@ -131,6 +138,7 @@ export class Webroot {
 		}
 		this.adapter = config.adapter ?? "node";
 		this.port = config.port ?? 4321;
+		this.runtimePath = config.runtimePath;
 		this.caches = path.join(this.path, ".caches");
 		this.astroCache = path.join(this.caches, ".astro");
 		this.viteCache = path.join(this.astroCache, "vite");

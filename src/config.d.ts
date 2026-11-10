@@ -1,4 +1,4 @@
-export type Adapter = "node" | "apache-proxy";
+export type Adapter = "node" | "apache-proxy" | "apache-cgi";
 
 export interface Config {
 	/**
@@ -14,10 +14,16 @@ export interface Config {
 	 * - `node` - use Astro's Node adapter server for everything
 	 * - `apache-proxy` - use Apache to serve static files, proxying Astro's
 	 *   Node server for dynamic routes
+	 * - `apache-cgi` - use Apache for static files and CGI for dynamic routes
 	 *
 	 * @default 'node'
 	 */
 	adapter?: Adapter;
+	/**
+	 * Absolute path to the JavaScript interpreter (Bun or Node) for apache-cgi.
+	 * Must not contain whitespace. Defaults to finding bun on Apache's PATH.
+	 */
+	runtimePath?: string;
 	/**
 	 * Port for the AstroHP server. `apache-proxy` webroots with the same port
 	 * share one listener in the same process. Each `node` webroot must use a

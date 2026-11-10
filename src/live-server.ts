@@ -78,6 +78,9 @@ export class AstroHPServer {
 		if (!webroots.length) {
 			throw new Error("AstroHPServer requires at least one webroot");
 		}
+		if (webroots.some(webroot => webroot.adapter === "apache-cgi")) {
+			throw new Error("apache-cgi sites run under Apache; use astrohp dev for local development");
+		}
 		this.webroots = [...webroots];
 		this.host = options.host ?? process.env.HOST ?? "127.0.0.1";
 		this.port = options.port ?? serverPort(webroots[0]!.port);

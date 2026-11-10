@@ -10,6 +10,7 @@ interface SerializedWebroot {
 	configFile: string | null;
 	adapter: Webroot["adapter"];
 	port: number;
+	runtimePath?: string;
 }
 
 interface WorkerRequest {
@@ -38,6 +39,7 @@ function serializeWebroot(webroot: Webroot): SerializedWebroot {
 		configFile: webroot.configFile,
 		adapter: webroot.adapter,
 		port: webroot.port,
+		...(webroot.runtimePath === undefined ? {} : { runtimePath: webroot.runtimePath }),
 	};
 }
 

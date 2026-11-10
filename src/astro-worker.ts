@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import type * as vite from "vite";
 
 import { buildSite } from "./build.js";
+import { cgiAdapter } from "./cgi-adapter.js";
 import { type DevServerOptions, startDev } from "./dev-server.js";
 import { type AstroHPServer, type LiveServerOptions, serverPort, startLive } from "./live-server.js";
 import {
@@ -20,6 +21,7 @@ interface SerializedWebroot {
 	configFile: string | null;
 	adapter: Webroot["adapter"];
 	port: number;
+	runtimePath?: string;
 }
 
 interface WorkerRequest {
@@ -33,6 +35,7 @@ function webrootFrom(data: SerializedWebroot): Webroot {
 		webroot: data.path,
 		adapter: data.adapter,
 		port: data.port,
+		...(data.runtimePath === undefined ? {} : { runtimePath: data.runtimePath }),
 	}, data.configFile);
 }
 
@@ -83,7 +86,7 @@ function astroConfig(
 		cacheDir: webroot.astroCache,
 		publicDir: webroot.publicDir,
 		output: "server",
-		adapter: nodeAdapter({ mode: "middleware" }),
+		adapter: webroot.adapter === "apache-cgi" ? cgiAdapter() : nodeAdapter({ mode: "middleware" }),
 		build: {
 			client: "./",
 			server: "./.server/",

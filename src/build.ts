@@ -86,12 +86,33 @@ export async function buildSite(
 			`Build did not produce ${path.join(webroot.nextDist, "index.html")}`,
 		);
 	}
+	if (webroot.adapter === "apache-cgi") {
+		const server = path.join(webroot.nextDist, ".server");
+		fs.copyFileSync(new URL("./cgi.js", import.meta.url), path.join(server, "cgi.mjs"));
+		const launcher = path.join(server, "astrohp.mjs");
+		fs.writeFileSync(
+			launcher,
+			[
+				`#!${webroot.runtimePath ?? "/usr/bin/env bun"}`,
+				'import { runCGI } from "./cgi.mjs";',
+				'try { await runCGI(() => import("./entry.mjs")); }',
+				"catch (error) { console.error(error); process.exit(1); }",
+				"process.exit(0);",
+				"",
+			].join("\n"),
+			{ mode: 0o755 },
+		);
+	}
 	publishDist(webroot);
-	if (webroot.adapter === "apache-proxy") {
+	if (webroot.adapter === "apache-proxy" || webroot.adapter === "apache-cgi") {
 		const resolved = resolvedRoutes();
 		if (!resolved) throw new Error("Astro did not resolve the AstroHP routes");
 		console.log(
-			generateApacheConfig(webroot, resolved, serverPort(webroot.port)),
+			generateApacheConfig(
+				webroot,
+				resolved,
+				webroot.adapter === "apache-cgi" ? webroot.port : serverPort(webroot.port),
+			),
 		);
 	}
 	return webroot.dist;
