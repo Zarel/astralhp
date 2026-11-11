@@ -56,6 +56,7 @@ export async function buildSite(
 	webroot: Webroot,
 	config: astro.AstroInlineConfig,
 	resolvedRoutes: () => AstrohpResolvedRoutes | undefined,
+	legacySources: Iterable<string> = [],
 ): Promise<string> {
 	process.env.ASTRO_TELEMETRY_DISABLED ||= "1";
 	const { build } = await import("astro");
@@ -79,7 +80,7 @@ export async function buildSite(
 	} finally {
 		if (cleanupFallback) removeEmptyDirectory(fallbackAstro);
 	}
-	await compileScripts(webroot, webroot.nextDist);
+	await compileScripts(webroot, legacySources, webroot.nextDist);
 
 	if (webroot.adapter === "apache-cgi") {
 		const server = path.join(webroot.nextDist, ".server");

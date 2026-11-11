@@ -13,7 +13,6 @@ const { DatabaseTable, PGDatabase, SQL, SQLStatement, SQLiteDatabase } = require
 
 const {
 	compileScripts,
-	scanBabelSources,
 	scriptOutputPath,
 } = require("../dist/babel.js");
 const {
@@ -70,7 +69,7 @@ test("exports package entrypoints", () => {
 		"utf8",
 	);
 	assert.match(componentIndex, /default as CSS/);
-	assert.match(componentIndex, /default as JS/);
+	assert.match(componentIndex, /default as ES3/);
 });
 
 test("loads the compiled package from node_modules", t => {
@@ -122,7 +121,7 @@ test("loads the compiled package from node_modules", t => {
 	const componentSource = path.join(project, "component.ts");
 	fs.writeFileSync(
 		componentSource,
-		'import { CSS, JS } from "astrohp/components"; void [CSS, JS];',
+		'import { CSS, ES3 } from "astrohp/components"; void [CSS, ES3];',
 	);
 	const componentTypecheck = spawnSync(
 		path.resolve(__dirname, "../node_modules/.bin/tsc"),
@@ -530,7 +529,7 @@ test("rejects assets that cannot be cachebusted locally", t => {
 	assert.throws(() => cachebust(site, "/missing.css", base), /does not exist/);
 });
 
-test("compiles directory TypeScript targets into the build", async t => {
+test("compiles explicitly selected TypeScript targets", async t => {
 	const webroot = fs.mkdtempSync(path.join(os.tmpdir(), "astrohp-test-"));
 	const distRoot = fs.mkdtempSync(path.join(os.tmpdir(), "astrohp-test-"));
 	t.after(() => fs.rmSync(webroot, { recursive: true, force: true }));
@@ -544,13 +543,12 @@ test("compiles directory TypeScript targets into the build", async t => {
 		JSON.stringify({ plugins: ["intentionally-not-installed"] }),
 	);
 
-	assert.deepEqual(scanBabelSources(webroot), [source]);
 	assert.equal(
 		scriptOutputPath(webroot, distRoot, source),
 		path.join(distRoot, "scripts", "script.js"),
 	);
 
-	const outputs = await compileScripts(new Webroot({ webroot }), distRoot);
+	const outputs = await compileScripts(new Webroot({ webroot }), [source], distRoot);
 	assert.deepEqual(outputs, [path.join(distRoot, "scripts", "script.js")]);
 
 	const compiled = fs.readFileSync(

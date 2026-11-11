@@ -7,6 +7,7 @@ import type * as vite from "vite";
 import { buildSite } from "./build.js";
 import { cgiAdapter } from "./cgi-adapter.js";
 import { type DevServerOptions, startDev } from "./dev-server.js";
+import { es3Plugin } from "./es3.js";
 import { type AstroHPServer, type LiveServerOptions, serverPort, startLive } from "./live-server.js";
 import {
 	type AstrohpConfigOptions,
@@ -75,6 +76,7 @@ function outsideRootEntrypoints(
 function astroConfig(
 	webroot: Webroot,
 	options: AstrohpConfigOptions = {},
+	legacySources: Set<string> = new Set(),
 ): astro.AstroInlineConfig {
 	const pages = webroot.scanPages();
 	if (!pages.length) {
@@ -112,7 +114,7 @@ function astroConfig(
 			define: {
 				"import.meta.env.ASTROHP_WEBROOT": JSON.stringify(webroot.path),
 			},
-			plugins: [outsideRootEntrypoints(webroot, pages)],
+			plugins: [es3Plugin(webroot, legacySources), outsideRootEntrypoints(webroot, pages)],
 		},
 	};
 }
@@ -165,15 +167,17 @@ async function run(request: WorkerRequest): Promise<void> {
 				throw new Error("An AstroHP build worker requires exactly one webroot");
 			}
 			let resolvedRoutes: AstrohpResolvedRoutes | undefined;
+			const legacySources = new Set<string>();
 			const config = astroConfig(webroots[0]!, {
 				onRoutesResolved(value) {
 					resolvedRoutes = value;
 				},
-			});
+			}, legacySources);
 			const result = await buildSite(
 				webroots[0]!,
 				config,
 				() => resolvedRoutes,
+				legacySources,
 			);
 			await send({ type: "ready", result });
 			process.disconnect();

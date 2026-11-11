@@ -137,11 +137,12 @@ The host needs to support:
 
 `runtimePath` must not contain whitespace.
 
-## Components
+## CSS and JS
 
 AstroHP supports Astro's usual ways to include CSS and JS, but if you would
 prefer a more PHP-style approach, we offer `<CSS>` and `<JS>` components
-that cachebust an asset while leaving it unmodified and in the same location.
+that cachebust an asset while leaving it as unmodified as possible, and
+in the same location.
 
 ```astro
 ---
@@ -181,11 +182,15 @@ For a `.ts` or `.tsx` source, `<JS>` changes the rendered extension to `.js`:
 <script src="script.js?loyw3v28"></script>
 ```
 
-## Babel
+## ES3 and Babel
 
-AstroHP recursively compiles every `.ts` and `.tsx` file in the webroot,
-excluding `.d.ts` files and private directories, hardcoded to use
-Showdown's Babel configuration.
+AstroHP supports compiling all the way down to ES3, for ancient browsers.
+This approach uses Babel and compiles `import` and `export` to no-ops,
+making everything a global.
+
+When doing this, use `<ES3 src="script.tsx" />` for each module you use,
+dependencies first. Unlike `<JS>`, there will be no bundling. We'll
+scan for `<ES3>` and compile each source file to a `.js` file.
 
 ```text
 example/
@@ -197,8 +202,8 @@ example/.caches/dist/
 
 This Babel configuration is designed to target ancient browsers while
 still letting you write code that looks modern. If you don't care about
-targeting ancient browsers, you're probably better off using Astro's
-built-in TypeScript support instead.
+targeting ancient browsers, you're probably better off using `<JS>`
+instead.
 
 If you do care about targeting ancient browsers, keep in mind:
 
