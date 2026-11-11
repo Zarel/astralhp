@@ -8,6 +8,7 @@ import { buildSite } from "./build.js";
 import { cgiAdapter } from "./cgi-adapter.js";
 import { type DevServerOptions, startDev } from "./dev-server.js";
 import { es3Plugin } from "./es3.js";
+import { ScriptBundles } from "./js.js";
 import { type AstroHPServer, type LiveServerOptions, serverPort, startLive } from "./live-server.js";
 import {
 	type AstrohpConfigOptions,
@@ -77,6 +78,7 @@ function astroConfig(
 	webroot: Webroot,
 	options: AstrohpConfigOptions = {},
 	legacySources: Set<string> = new Set(),
+	bundles: ScriptBundles = new ScriptBundles(webroot),
 ): astro.AstroInlineConfig {
 	const pages = webroot.scanPages();
 	if (!pages.length) {
@@ -114,7 +116,11 @@ function astroConfig(
 			define: {
 				"import.meta.env.ASTROHP_WEBROOT": JSON.stringify(webroot.path),
 			},
-			plugins: [es3Plugin(webroot, legacySources), outsideRootEntrypoints(webroot, pages)],
+			plugins: [
+				bundles.plugin(legacySources),
+				es3Plugin(webroot, legacySources),
+				outsideRootEntrypoints(webroot, pages),
+			],
 		},
 	};
 }
@@ -168,16 +174,23 @@ async function run(request: WorkerRequest): Promise<void> {
 			}
 			let resolvedRoutes: AstrohpResolvedRoutes | undefined;
 			const legacySources = new Set<string>();
-			const config = astroConfig(webroots[0]!, {
-				onRoutesResolved(value) {
-					resolvedRoutes = value;
+			const bundles = new ScriptBundles(webroots[0]!);
+			const config = astroConfig(
+				webroots[0]!,
+				{
+					onRoutesResolved(value) {
+						resolvedRoutes = value;
+					},
 				},
-			}, legacySources);
+				legacySources,
+				bundles,
+			);
 			const result = await buildSite(
 				webroots[0]!,
 				config,
 				() => resolvedRoutes,
 				legacySources,
+				bundles,
 			);
 			await send({ type: "ready", result });
 			process.disconnect();

@@ -1,0 +1,18 @@
+---
+import type { HTMLAttributes } from "astro/types";
+
+type Props = Omit<HTMLAttributes<"script">, "src" | "type"> & {
+	src: string;
+	/** @internal Filled by AstroHP's build integration. */
+	__astrohpStyles?: string[];
+};
+
+const { src, __astrohpStyles, ...attributes } = Astro.props;
+if (!__astrohpStyles) {
+	throw new Error(
+		'Import JS directly from "astrohp/components" and use a literal src',
+	);
+}
+---
+{__astrohpStyles.map(href => <link rel="stylesheet" href={href} />)}
+<script is:inline {...attributes} type="module" src={src}></script>

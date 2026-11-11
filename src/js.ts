@@ -1,0 +1,190 @@
+import MagicString from "magic-string";
+import { createHash } from "node:crypto";
+import fs from "node:fs";
+import { createRequire } from "node:module";
+import path from "node:path";
+import { pathToFileURL } from "node:url";
+import type * as vite from "vite";
+import { scriptOutputPath } from "./babel.js";
+import { scriptReferences } from "./script-references.js";
+import type { Webroot } from "./webroot.js";
+
+// Resolve the toolchain from Astro, including when it has a nested Vite install.
+const viteURL = pathToFileURL(createRequire(import.meta.resolve("astro")).resolve("vite")).href;
+const TARGET = ["chrome64", "firefox67", "safari11.1", "edge79"];
+
+interface Bundle {
+	src: string;
+	styles: string[];
+	files: Map<string, string | Uint8Array>;
+	dependencies: Set<string>;
+}
+
+function publicURL(filename: string): string {
+	return "/" + filename.split(path.sep).map(encodeURIComponent).join("/");
+}
+
+export class ScriptBundles {
+	private readonly webroot: Webroot;
+	private readonly bundles = new Map<string, Promise<Bundle>>();
+	private readonly owners = new Map<string, string>();
+
+	constructor(webroot: Webroot) {
+		this.webroot = webroot;
+	}
+
+	private bundle(source: string): Promise<Bundle> {
+		let pending = this.bundles.get(source);
+		if (!pending) {
+			pending = this.compile(source);
+			this.bundles.set(source, pending);
+			pending.catch(() => {
+				if (this.bundles.get(source) === pending) this.bundles.delete(source);
+			});
+		}
+		return pending;
+	}
+
+	private async compile(source: string): Promise<Bundle> {
+		const entry = path.relative(this.webroot.path, source).replace(/\.(?:tsx?|jsx|cjs)$/, ".js");
+		const owner = this.owners.get(entry);
+		if (owner && owner !== source) throw new Error(`JS output collision: ${owner} and ${source} both produce ${entry}`);
+		this.owners.set(entry, source);
+		const directory = path.dirname(entry);
+		const dependencies = new Set<string>([source]);
+		const { build } = await import(viteURL) as typeof vite;
+		const result = await build({
+			configFile: false,
+			root: this.webroot.path,
+			publicDir: false,
+			base: "./",
+			logLevel: "error",
+			plugins: [{
+				name: "astrohp:bundle-dependencies",
+				buildEnd() {
+					for (const filename of this.getModuleIds()) {
+						const clean = filename.split("?")[0]!;
+						if (path.isAbsolute(clean) && fs.existsSync(clean)) dependencies.add(clean);
+					}
+				},
+			}],
+			build: {
+				target: TARGET,
+				write: false,
+				emptyOutDir: false,
+				outDir: path.join(this.webroot.nextDist, directory),
+				sourcemap: true,
+				assetsInlineLimit: 0,
+				rollupOptions: {
+					input: source,
+					preserveEntrySignatures: "strict",
+					output: {
+						format: "es",
+						entryFileNames: path.basename(entry),
+						chunkFileNames: "_chunks/[name]-[hash].js",
+						assetFileNames: "_assets/[name]-[hash][extname]",
+					},
+				},
+			},
+		});
+		if (!("output" in result)) throw new Error("Expected a single JS bundle output");
+		const files = new Map<string, string | Uint8Array>();
+		const styles: string[] = [];
+		const hash = createHash("sha256");
+		for (const item of [...result.output].sort((a, b) => a.fileName.localeCompare(b.fileName))) {
+			const filename = path.join(directory, item.fileName);
+			const contents = item.type === "chunk" ? item.code : item.source;
+			files.set(filename, contents);
+			// Include CSS and lazy chunks, but not source maps containing local paths.
+			if (!filename.endsWith(".map")) hash.update(filename).update("\0").update(contents).update("\0");
+			if (item.type === "chunk" && item.isEntry) {
+				const css = (item as typeof item & { viteMetadata?: { importedCss: Set<string> } }).viteMetadata?.importedCss;
+				for (const file of css ?? []) styles.push(publicURL(path.join(directory, file)));
+			}
+		}
+		return { src: `${publicURL(entry)}?v=${hash.digest("hex").slice(0, 16)}`, styles, files, dependencies };
+	}
+
+	async writeTo(dist: string, legacySources: Iterable<string> = []): Promise<void> {
+		const legacyOutputs = new Set(
+			[...legacySources].map(source => path.relative(dist, scriptOutputPath(this.webroot.path, dist, source))),
+		);
+		const files = new Map<string, string | Uint8Array>();
+		for (const pending of this.bundles.values()) {
+			for (const [filename, contents] of (await pending).files) {
+				if (legacyOutputs.has(filename)) throw new Error(`JS and ES3 both produce ${filename}`);
+				const previous = files.get(filename);
+				if (previous !== undefined && !Buffer.from(previous).equals(Buffer.from(contents))) {
+					throw new Error(`JS output collision: ${filename}`);
+				}
+				files.set(filename, contents);
+			}
+		}
+		for (const [filename, contents] of files) {
+			const destination = path.join(dist, filename);
+			fs.mkdirSync(path.dirname(destination), { recursive: true });
+			fs.writeFileSync(destination, contents);
+		}
+	}
+
+	plugin(legacySources: Set<string>): vite.Plugin {
+		let server: vite.ViteDevServer | undefined;
+		let queue = Promise.resolve();
+		return {
+			name: "astrohp:js",
+			enforce: "pre",
+			configureServer: devServer => {
+				server = devServer;
+				server.watcher.on("all", (event, filename) => {
+					if (!["add", "change", "unlink"].includes(event) || filename.includes(`${path.sep}.caches${path.sep}`)) {
+						return;
+					}
+					queue = queue.then(async () => {
+						let changed = false;
+						for (const [source, pending] of [...this.bundles]) {
+							if (!(await pending).dependencies.has(filename)) continue;
+							this.bundles.delete(source);
+							try {
+								await this.bundle(source);
+							} catch (error) {
+								// Keep watching the last successful dependency graph so a
+								// syntax error can be repaired without restarting dev.
+								this.bundles.set(source, pending);
+								throw error;
+							}
+							changed = true;
+						}
+						if (!changed) return;
+						await this.writeTo(this.webroot.dist, legacySources);
+						for (const environment of Object.values(server!.environments)) environment.moduleGraph.invalidateAll();
+						server!.ws.send({ type: "full-reload", path: "*" });
+					}).catch(error => {
+						server!.config.logger.error(`AstroHP JS: ${error.message}`);
+						server!.ws.send({ type: "error", err: { message: error.message, stack: error.stack } });
+					});
+				});
+			},
+			transform: {
+				order: "pre",
+				handler: async (code, id) => {
+					if (!id.endsWith(".astro")) return;
+					const references = scriptReferences(this.webroot, id, code, "JS");
+					if (!references.scripts.length) return;
+					await queue;
+					const output = new MagicString(code);
+					for (const reference of references.scripts) {
+						const bundle = await this.bundle(reference.source);
+						output.overwrite(reference.start, reference.end, `{${JSON.stringify(bundle.src)}}`);
+						output.appendLeft(reference.insert, ` __astrohpStyles={${JSON.stringify(bundle.styles)}}`);
+						server?.watcher.add([...bundle.dependencies]);
+					}
+					if (server) await this.writeTo(this.webroot.dist, legacySources);
+					return {
+						code: output.toString(),
+						map: output.generateMap({ hires: true, source: id, includeContent: true }).toString(),
+					};
+				},
+			},
+		};
+	}
+}

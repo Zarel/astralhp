@@ -158,10 +158,11 @@ modification time encoded in base 36:
 
 ```html
 <link rel="stylesheet" href="/style.css?loyw3v28">
-<script src="/js/app.js?loyw3v28" defer></script>
+<script type="module" src="/js/app.js?loyw3v28" defer></script>
 ```
 
-The source can be root-relative or relative to the rendered page:
+The source can be absolute (relative to the webroot) or relative to the Astro
+component:
 
 ```astro
 <CSS src="/style/global.css" />
@@ -179,7 +180,7 @@ For a `.ts` or `.tsx` source, `<JS>` changes the rendered extension to `.js`:
 ```
 
 ```html
-<script src="script.js?loyw3v28"></script>
+<script type="module" src="script.js?loyw3v28"></script>
 ```
 
 ## ES3 and Babel

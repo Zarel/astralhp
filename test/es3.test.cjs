@@ -6,7 +6,7 @@ const path = require("node:path");
 const net = require("node:net");
 const test = require("node:test");
 const { build, dev, Webroot } = require("astrohp");
-const { es3References } = require("../dist/es3.js");
+const { scriptReferences } = require("../dist/script-references.js");
 const { AstroHPServer } = require("../dist/live-server.js");
 
 function fixture(t) {
@@ -28,7 +28,7 @@ import ES3 from "./unrelated.astro";
 <ES3 src={anything} />
 {false && <Legacy src="../scripts/legacy.ts" defer />}
 <Assets.ES3 src="/scripts/legacy.ts" />`;
-	const result = es3References(site, path.join(site.path, "nested/page.astro"), source);
+	const result = scriptReferences(site, path.join(site.path, "nested/page.astro"), source);
 	assert.deepEqual(result.sources, [path.join(site.path, "scripts/legacy.ts")]);
 	assert.match(result.code, /<Legacy src=\{"\/scripts\/legacy.ts"\} defer/);
 	assert.match(result.code, /😀<!-- <Legacy src="missing.ts" \/> -->/);
@@ -38,7 +38,7 @@ import ES3 from "./unrelated.astro";
 test("rejects dynamic, missing, external, and escaping ES3 sources", t => {
 	const site = fixture(t);
 	const filename = path.join(site.path, "index.astro");
-	const check = tag => es3References(site, filename, `---\nimport { ES3 } from "astrohp/components";\n---\n${tag}`);
+	const check = tag => scriptReferences(site, filename, `---\nimport { ES3 } from "astrohp/components";\n---\n${tag}`);
 	for (const tag of ["<ES3 src={name} />", "<ES3 {...props} />", '<ES3 src="/scripts/legacy.ts" src="other.ts" />']) {
 		assert.throws(() => check(tag), /requires a literal src/);
 	}

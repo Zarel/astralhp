@@ -118,13 +118,13 @@ RewriteRule "(?:^|/)node_modules(?:/|$)" "-" [R=404,END,NC]
 RewriteRule "(?:^|/)\\.(?!well-known(?:/|$)|caches(?:/|$))" "-" [R=404,END,NC]
 RewriteRule "\\.(?:astro|ts|tsx)$" "-" [R=404,END,NC]
 
-# Serve all other files
-RewriteCond "%{REQUEST_FILENAME}" -f
-RewriteRule "^" "-" [END]
-
 # Serve built files in .caches/dist/
 RewriteCond "%{DOCUMENT_ROOT}/.caches/dist/$1" -f
 RewriteRule "^(.+)$" ".caches/dist/$1" [END]
+
+# Serve all other files
+RewriteCond "%{REQUEST_FILENAME}" -f
+RewriteRule "^" "-" [END]
 
 # Remove .html from URLs
 RewriteCond "%{DOCUMENT_ROOT}/.caches/dist/index.html" -f

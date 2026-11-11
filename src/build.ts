@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { generateApacheConfig } from "./apache.js";
 import { compileScripts } from "./babel.js";
+import type { ScriptBundles } from "./js.js";
 import { serverPort } from "./live-server.js";
 import type { AstrohpResolvedRoutes, Webroot } from "./webroot.js";
 
@@ -57,6 +58,7 @@ export async function buildSite(
 	config: astro.AstroInlineConfig,
 	resolvedRoutes: () => AstrohpResolvedRoutes | undefined,
 	legacySources: Iterable<string> = [],
+	bundles?: ScriptBundles,
 ): Promise<string> {
 	process.env.ASTRO_TELEMETRY_DISABLED ||= "1";
 	const { build } = await import("astro");
@@ -80,6 +82,7 @@ export async function buildSite(
 	} finally {
 		if (cleanupFallback) removeEmptyDirectory(fallbackAstro);
 	}
+	await bundles?.writeTo(webroot.nextDist, legacySources);
 	await compileScripts(webroot, legacySources, webroot.nextDist);
 
 	if (webroot.adapter === "apache-cgi") {

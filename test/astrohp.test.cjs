@@ -70,6 +70,7 @@ test("exports package entrypoints", () => {
 	);
 	assert.match(componentIndex, /default as CSS/);
 	assert.match(componentIndex, /default as ES3/);
+	assert.match(componentIndex, /default as JS/);
 });
 
 test("loads the compiled package from node_modules", t => {
@@ -121,7 +122,7 @@ test("loads the compiled package from node_modules", t => {
 	const componentSource = path.join(project, "component.ts");
 	fs.writeFileSync(
 		componentSource,
-		'import { CSS, ES3 } from "astrohp/components"; void [CSS, ES3];',
+		'import { CSS, ES3, JS } from "astrohp/components"; void [CSS, ES3, JS];',
 	);
 	const componentTypecheck = spawnSync(
 		path.resolve(__dirname, "../node_modules/.bin/tsc"),
@@ -764,7 +765,7 @@ test("translates Astro route segments to Apache patterns", () => {
 	);
 });
 
-test("generates Apache rules in static, built, proxy order", () => {
+test("generates Apache rules in built, static, proxy order", () => {
 	const block = apacheBlock(9001, [dynamicApacheRoute]);
 	const physical = block.indexOf('RewriteCond "%{REQUEST_FILENAME}" -f');
 	const built = block.indexOf(
@@ -783,8 +784,9 @@ test("generates Apache rules in static, built, proxy order", () => {
 	);
 	assert.match(block, /^ProxyPreserveHost On$/m);
 	assert(physical > 0);
-	assert(built > physical);
-	assert(proxy > built);
+	assert(built > 0);
+	assert(physical > built);
+	assert(proxy > physical);
 	assert.doesNotMatch(block, /RewriteRule "\^" "http:/);
 	assert.doesNotMatch(block, /\d{8}-[a-z\d]+/i);
 });

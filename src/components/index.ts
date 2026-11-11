@@ -3,3 +3,5 @@
 export { default as CSS } from "./CSS.astro";
 // @ts-ignore TypeScript itself does not resolve .astro modules.
 export { default as ES3 } from "./ES3.astro";
+// @ts-ignore TypeScript itself does not resolve .astro modules.
+export { default as JS } from "./JS.astro";

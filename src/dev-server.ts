@@ -12,12 +12,11 @@ export interface AstroHPDevServer {
 	stop(): Promise<void>;
 }
 
-function isCompiledScriptRequest(requestUrl: string | undefined): boolean {
-	if (!requestUrl) return false;
+function isCompiledAssetRequest(url: string | undefined): boolean {
+	if (!url) return false;
 	try {
-		return /\.js(?:\.map)?$/i.test(
-			new URL(requestUrl, "http://astrohp.local").pathname,
-		);
+		const pathname = new URL(url, "http://astrohp.local").pathname;
+		return /\.(?:m?js|css)(?:\.map)?$/i.test(pathname) || /\/(?:_assets|_chunks)\//.test(pathname);
 	} catch {
 		return false;
 	}
@@ -37,10 +36,8 @@ export function staticFiles(webroot: Webroot): vite.Plugin {
 				if (request.method !== "GET" && request.method !== "HEAD") return next();
 				// resolveStaticFile excludes TypeScript sources. Let Vite transform
 				// module imports of those files instead of serving them verbatim.
-				const filename = (
-					isCompiledScriptRequest(request.url) &&
-					webroot.resolveDistFile(request.url)
-				) || webroot.resolveStaticFile(request.url);
+				const filename = (isCompiledAssetRequest(request.url) && webroot.resolveDistFile(request.url)) ||
+					webroot.resolveStaticFile(request.url);
 				if (!filename) return next();
 
 				response.statusCode = 200;
