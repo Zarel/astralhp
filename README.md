@@ -127,6 +127,7 @@ pageview.
 Use a Node version that meets AstroHP's requirements (currently 22.18+).
 
 The host needs to support:
+
 - custom CGI executables
 - a compatible Bun or Node, or let you install your own
 - `mod_cgi` or `mod_cgid`

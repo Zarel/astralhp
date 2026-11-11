@@ -86,7 +86,8 @@ for (const runtime of ["Node", "Bun"]) {
 		);
 		const webroot = await Webroot.resolve(root);
 		assert.equal(webroot.runtimePath, runtimePath);
-		fs.writeFileSync(path.join(root, "index.astro"), "---\nexport const prerender = true;\n---\nStatic home");
+		fs.writeFileSync(path.join(root, "index.astro"), '<p>{Astro.url.searchParams.get("message")}</p>');
+		fs.writeFileSync(path.join(root, "about.astro"), "---\nexport const prerender = true;\n---\nStatic about");
 		fs.writeFileSync(
 			path.join(root, "live.astro"),
 			`---
@@ -109,7 +110,12 @@ const body = Astro.request.method === "POST" ? (await Astro.request.formData()).
 		assert.equal(fs.statSync(launcher).mode & 0o777, 0o755);
 		assert.equal(fs.readFileSync(launcher, "utf8").split("\n")[0], `#!${runtimePath}`);
 		assert.match(fs.readFileSync(path.join(root, ".htaccess"), "utf8"), /SetHandler cgi-script/);
-		assert.match(fs.readFileSync(path.join(webroot.dist, "index.html"), "utf8"), /Static home/);
+		assert.equal(fs.existsSync(path.join(webroot.dist, "index.html")), false);
+		assert.match(fs.readFileSync(path.join(webroot.dist, "about.html"), "utf8"), /Static about/);
+		assert.match(
+			fs.readFileSync(path.join(root, ".htaccess"), "utf8"),
+			/RewriteRule "\^\$" "\.caches\/dist\/\.server\/astrohp\.mjs" \[END\]/,
+		);
 		function request(overrides = {}, body = "") {
 			const result = spawnSync(launcher, [], {
 				cwd: os.tmpdir(),
@@ -125,6 +131,11 @@ const body = Astro.request.method === "POST" ? (await Astro.request.formData()).
 				body: result.stdout.subarray(end + 4),
 				stderr: String(result.stderr),
 			};
+		}
+		for (const message of ["first", "second"]) {
+			const home = request({ REQUEST_URI: "/", QUERY_STRING: `message=${message}` });
+			assert.match(home.headers, /^Status: 200 OK/);
+			assert.equal(String(home.body), `<!DOCTYPE html><p>${message}</p>`);
 		}
 		const get = request();
 		assert.equal(String(request({ QUERY_STRING: "proxy=1", HTTP_PROXY: "http://untrusted.test" }).body), "undefined");

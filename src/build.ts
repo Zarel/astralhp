@@ -81,11 +81,6 @@ export async function buildSite(
 	}
 	await compileScripts(webroot, webroot.nextDist);
 
-	if (!fs.existsSync(path.join(webroot.nextDist, "index.html"))) {
-		throw new Error(
-			`Build did not produce ${path.join(webroot.nextDist, "index.html")}`,
-		);
-	}
 	if (webroot.adapter === "apache-cgi") {
 		const server = path.join(webroot.nextDist, ".server");
 		fs.copyFileSync(new URL("./cgi.js", import.meta.url), path.join(server, "cgi.mjs"));
