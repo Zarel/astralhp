@@ -84,11 +84,11 @@ function cgiRules(routes: readonly ApacheRoute[]): string {
 	const patterns = [...new Set(routes.map(route => route.regex))].sort();
 	return `# Execute dynamic AstroHP routes through CGI
 Options +ExecCGI
-<Files "astrohp.mjs">
+<Files "cgi.mjs">
     SetHandler cgi-script
 </Files>
 ${
-		patterns.map(regex => `RewriteRule "${regex.replace(/"/g, '\\"')}" ".caches/dist/.server/astrohp.mjs" [END]`).join(
+		patterns.map(regex => `RewriteRule "${regex.replace(/"/g, '\\"')}" ".caches/dist/.server/cgi.mjs" [END]`).join(
 			"\n",
 		)
 	}`;

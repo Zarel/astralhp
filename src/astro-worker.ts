@@ -5,10 +5,11 @@ import { fileURLToPath } from "node:url";
 import type * as vite from "vite";
 
 import { buildSite } from "./build.js";
+import { AssetBundles } from "./bundles.js";
 import { cgiAdapter } from "./cgi-adapter.js";
 import { type DevServerOptions, startDev } from "./dev-server.js";
 import { es3Plugin } from "./es3.js";
-import { ScriptBundles } from "./js.js";
+import type { ScriptCache } from "./babel.js";
 import { type AstroHPServer, type LiveServerOptions, serverPort, startLive } from "./live-server.js";
 import {
 	type AstrohpConfigOptions,
@@ -50,7 +51,7 @@ function outsideRootEntrypoints(
 	);
 	const entrypoints = new Map(
 		[...pages.map(page => page.entrypoint), nodeImageEndpoint].map(entrypoint => {
-			const relative = path.relative(webroot.caches, entrypoint)
+			const relative = path.relative(webroot.projectCaches, entrypoint)
 				.split(path.sep).join("/");
 			return [`/${relative}`, entrypoint];
 		}),
@@ -78,7 +79,8 @@ function astroConfig(
 	webroot: Webroot,
 	options: AstrohpConfigOptions = {},
 	legacySources: Set<string> = new Set(),
-	bundles: ScriptBundles = new ScriptBundles(webroot),
+	bundles: AssetBundles = new AssetBundles(webroot),
+	legacyCache: ScriptCache = new Map(),
 ): astro.AstroInlineConfig {
 	const pages = webroot.scanPages();
 	if (!pages.length) {
@@ -86,7 +88,7 @@ function astroConfig(
 	}
 
 	return {
-		root: webroot.caches,
+		root: webroot.projectCaches,
 		cacheDir: webroot.astroCache,
 		publicDir: webroot.publicDir,
 		output: "server",
@@ -94,6 +96,7 @@ function astroConfig(
 		build: {
 			client: "./",
 			server: "./.server/",
+			serverEntry: "app.mjs",
 		},
 		server: {
 			port: webroot.port,
@@ -103,7 +106,7 @@ function astroConfig(
 		},
 		integrations: [astrohpIntegration(pages, {
 			...options,
-			entrypointRoot: webroot.caches,
+			entrypointRoot: webroot.projectCaches,
 		})],
 		vite: {
 			root: webroot.path,
@@ -118,7 +121,7 @@ function astroConfig(
 			},
 			plugins: [
 				bundles.plugin(legacySources),
-				es3Plugin(webroot, legacySources),
+				es3Plugin(webroot, legacySources, legacyCache),
 				outsideRootEntrypoints(webroot, pages),
 			],
 		},
@@ -174,7 +177,8 @@ async function run(request: WorkerRequest): Promise<void> {
 			}
 			let resolvedRoutes: AstrohpResolvedRoutes | undefined;
 			const legacySources = new Set<string>();
-			const bundles = new ScriptBundles(webroots[0]!);
+			const legacyCache: ScriptCache = new Map();
+			const bundles = new AssetBundles(webroots[0]!);
 			const config = astroConfig(
 				webroots[0]!,
 				{
@@ -184,6 +188,7 @@ async function run(request: WorkerRequest): Promise<void> {
 				},
 				legacySources,
 				bundles,
+				legacyCache,
 			);
 			const result = await buildSite(
 				webroots[0]!,
@@ -191,6 +196,7 @@ async function run(request: WorkerRequest): Promise<void> {
 				() => resolvedRoutes,
 				legacySources,
 				bundles,
+				legacyCache,
 			);
 			await send({ type: "ready", result });
 			process.disconnect();

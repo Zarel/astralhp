@@ -5,10 +5,12 @@ import { Webroot } from "../webroot.js";
 
 type Props = Omit<HTMLAttributes<"link">, "href" | "rel"> & {
 	src: string;
+	/** @internal Filled by AstroHP for compiled stylesheets. */
+	__astrohpHref?: string;
 };
 
-const { src, ...attributes } = Astro.props;
-const href = cachebust(
+const { src, __astrohpHref, ...attributes } = Astro.props;
+const href = __astrohpHref ?? cachebust(
 	new Webroot({ webroot: import.meta.env.ASTROHP_WEBROOT }),
 	src,
 	Astro.url,

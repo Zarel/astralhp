@@ -8,7 +8,7 @@ const test = require("node:test");
 const { pathToFileURL } = require("node:url");
 const { build, dev, Webroot } = require("astrohp");
 const { AstroHPServer } = require("../dist/live-server.js");
-const { ScriptBundles } = require("../dist/js.js");
+const { AssetBundles } = require("../dist/bundles.js");
 const { EventEmitter } = require("node:events");
 
 function fixture(t) {
@@ -106,6 +106,8 @@ test("JS bundles use stable paths, include dependencies and CSS, and render on s
 
 	// The entry name stays stable; editing a dependency, including a lazy
 	// dependency, changes the rendered cache-busting URL.
+	await build(site);
+	assert.equal(bundleURL(fs.readFileSync(path.join(site.dist, "index.html"), "utf8")), url);
 	fs.writeFileSync(path.join(site.path, "scripts/dependency.js"), 'export const message = "dependency-two";');
 	await build(site);
 	const updated = bundleURL(fs.readFileSync(path.join(site.dist, "index.html"), "utf8"));
@@ -170,7 +172,7 @@ test("JS development recovers after an imported dependency has a syntax error", 
 	const watcher = new EventEmitter();
 	watcher.add = () => {};
 	const messages = new EventEmitter();
-	const plugin = new ScriptBundles(site).plugin(new Set());
+	const plugin = new AssetBundles(site).plugin(new Set());
 	plugin.configureServer({
 		watcher,
 		environments: {},

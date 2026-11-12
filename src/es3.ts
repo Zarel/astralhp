@@ -1,16 +1,23 @@
 import fs from "node:fs";
 import path from "node:path";
+import MagicString from "magic-string";
 import type * as vite from "vite";
-import { compileScript, scriptOutputPath } from "./babel.js";
-import { scriptReferences } from "./script-references.js";
+import { assetReferences } from "./asset-references.js";
+import { compileScript, prepareScript, scriptOutputPath, type ScriptCache } from "./babel.js";
+import { contentHash } from "./cachebuster.js";
 import type { Webroot } from "./webroot.js";
 
-export function es3Plugin(webroot: Webroot, buildSources: Set<string> = new Set()): vite.Plugin {
+export function es3Plugin(
+	webroot: Webroot,
+	buildSources: Set<string> = new Set(),
+	cache: ScriptCache = new Map(),
+): vite.Plugin {
 	const references = new Map<string, Set<string>>();
 	let server: vite.ViteDevServer | undefined;
 	let queue = Promise.resolve();
 	const referenced = (source: string): boolean => [...references.values()].some(sources => sources.has(source));
 	const removeOutput = (source: string): void => {
+		cache.delete(source);
 		const output = scriptOutputPath(webroot.path, webroot.dist, source);
 		fs.rmSync(output, { force: true });
 		fs.rmSync(`${output}.map`, { force: true });
@@ -31,10 +38,13 @@ export function es3Plugin(webroot: Webroot, buildSources: Set<string> = new Set(
 				if (!referenced(filename)) return;
 				queue = queue.then(async () => {
 					try {
+						cache.delete(filename);
 						if (event === "unlink") removeOutput(filename);
-						else await compileScript(webroot, filename);
+						else await compileScript(webroot, filename, webroot.dist, cache);
+						for (const environment of Object.values(server!.environments)) environment.moduleGraph.invalidateAll();
 						server!.ws.send({ type: "full-reload", path: "*" });
 					} catch (error) {
+						cache.delete(filename);
 						server!.config.logger.error(`AstroHP ES3: ${(error as Error).message}`);
 					}
 				});
@@ -44,7 +54,7 @@ export function es3Plugin(webroot: Webroot, buildSources: Set<string> = new Set(
 			order: "pre",
 			async handler(code, id) {
 				if (!id.endsWith(".astro")) return;
-				const result = scriptReferences(webroot, id, code, "ES3");
+				const result = assetReferences(webroot, id, code, "ES3");
 				const previous = references.get(id);
 				references.set(id, new Set(result.sources));
 				for (const source of result.sources) {
@@ -54,9 +64,27 @@ export function es3Plugin(webroot: Webroot, buildSources: Set<string> = new Set(
 				if (server) {
 					await queue;
 					for (const source of previous ?? []) if (!referenced(source)) removeOutput(source);
-					await Promise.all(result.sources.map(source => compileScript(webroot, source)));
+					await Promise.all(result.sources.map(source => compileScript(webroot, source, webroot.dist, cache)));
 				}
-				return { code: result.code, map: result.map.toString() };
+				const output = new MagicString(code);
+				for (const reference of result.assets) {
+					output.overwrite(reference.start, reference.end, `{${JSON.stringify(reference.pathname)}}`);
+					if (!result.sources.includes(reference.source)) continue;
+					let pending = cache.get(reference.source);
+					if (!pending) {
+						pending = prepareScript(webroot, reference.source, webroot.nextDist);
+						cache.set(reference.source, pending);
+						pending.catch(() => cache.delete(reference.source));
+					}
+					const compiled = await pending;
+					if (!compiled) throw new Error(`No compiled script produced for ${reference.source}`);
+					const src = `${reference.pathname.replace(/\.tsx?$/, ".js")}?v=${contentHash(compiled.code)}`;
+					output.appendLeft(reference.insert, ` __astrohpSrc={${JSON.stringify(src)}}`);
+				}
+				return {
+					code: output.toString(),
+					map: output.generateMap({ hires: true, source: id, includeContent: true }).toString(),
+				};
 			},
 		},
 	};

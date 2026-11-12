@@ -23,7 +23,7 @@ export function cgiAdapter(): AstroIntegration {
 						context.setAdapter({
 							...options,
 							name: "astrohp/apache-cgi",
-							serverEntrypoint: fileURLToPath(new URL("./cgi-entry.js", import.meta.url)),
+							serverEntrypoint: fileURLToPath(new URL("./cgi-server/app.js", import.meta.url)),
 						});
 					},
 				}),

@@ -1,5 +1,10 @@
 import fs from "node:fs";
+import { createHash } from "node:crypto";
 import type { Webroot } from "./webroot.js";
+
+export function contentHash(contents: string | Uint8Array): string {
+	return createHash("sha256").update(contents).digest("hex").slice(0, 16);
+}
 
 function cachebustFile(
 	source: string,
@@ -26,8 +31,7 @@ function cachebustFile(
 		throw new Error(`Cachebusted asset does not exist in the webroot: ${source}`);
 	}
 
-	const mtime = Math.trunc(fs.statSync(filename).mtimeMs).toString(36);
-	return `${source}?${mtime}`;
+	return `${source}?v=${contentHash(fs.readFileSync(filename))}`;
 }
 
 export function cachebust(webroot: Webroot, source: string, base: URL): string {
@@ -35,14 +39,9 @@ export function cachebust(webroot: Webroot, source: string, base: URL): string {
 }
 
 export function cachebustScript(webroot: Webroot, source: string, base: URL): string {
-	const typescript = /\.tsx?$/i.test(new URL(source, base).pathname);
-	const cachebusted = cachebustFile(
-		source,
+	return cachebustFile(
+		source.replace(/\.tsx?$/i, ".js"),
 		base,
-		requestUrl =>
-			typescript ?
-				webroot.resolveFile(requestUrl) :
-				webroot.resolveStaticFile(requestUrl),
+		requestUrl => webroot.resolveDistFile(requestUrl) ?? webroot.resolveStaticFile(requestUrl),
 	);
-	return cachebusted.replace(/\.tsx?(?=\?)/i, ".js");
 }

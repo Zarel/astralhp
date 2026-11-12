@@ -1,7 +1,8 @@
 # AstroHP
 
 AstroHP is intended to make Astro work more like Apache+PHP, with a webroot
-containing `.astro` pages and static files.
+containing `.astro` pages and static files. It's written to work even on
+many shared hosts.
 
 To run a dev server with `example` as the web root:
 
@@ -34,7 +35,7 @@ in the webroot, or `astrohp.mts` in a parent directory of the webroot:
 
 ```ts
 export const config: import("astrohp").Config = {
-	webroot: "example",
+	webroot: "www",
 	adapter: "apache-proxy",
 	port: 9001,
 };
@@ -57,15 +58,22 @@ start one server capable of serving multiple webroots.
 
 ## Apache
 
-Set `adapter` to `"apache-proxy"`, then build the site to update AstroHP's
-section of the webroot's `.htaccess`:
+You can set `adapter` to `"apache-proxy"` or `"apache-cgi"`, to use AstroHP
+from inside Apache, which is useful for shared hosting.
+
+- `apache-proxy` is an approach where you build, put the files in the Apache
+  webroot, and then run `astrohp start`. Apache will serve static files, and
+  then proxy dynamic pages to AstroHP. It's quite performant.
+
+- `apache-cgi` is an approach where you build, put the files in the Apache
+  webroot, and that's it. It's slower, but may be more suitable for shared
+  hosts that don't let you run a persistent server.
+
+Build with:
 
 ```sh
 astrohp build example
 ```
-
-If using AstroHP in static mode, this is all you need for shared hosting.
-If any pages are dynamic, you'll also need the live server.
 
 The generated block is marked like this, and will be created if it doesn't
 exist:
@@ -81,10 +89,6 @@ AstroHP replaces only this block and preserves all configuration outside it.
 
 You can read the block to see what it does (deny access to `.caches`, support
 leaving off `.html`, etc).
-
-AstroHP generates a proxy rule for every non-prerendered page. If every page
-is prerendered, it generates no proxy rules and Apache is the only server
-needed.
 
 The configured `port` is used both when generating the proxy configuration and
 starting AstroHP. Apache sends its document root in a private request header so
@@ -106,7 +110,7 @@ The `.htaccess` expects the webroot to be the Apache `DocumentRoot`, Apache
 (These are all default settings except `FileInfo`, which is the one that allows
 `.htaccess` files in the first place, which is usually enabled by shared hosts.)
 
-## CGI on Apache
+### CGI on Apache
 
 `apache-cgi` lets you run dynamic pages on shared hosts that don't let you run
 a persistent server:
@@ -152,13 +156,12 @@ import { CSS, JS } from "astrohp/components";
 <JS src="/js/app.tsx" defer />
 ```
 
-`<CSS>` renders a `<link rel="stylesheet">` and `<JS>` renders an inline
-`<script src>`. Both forward additional attributes and append the local file's
-modification time encoded in base 36:
+`<CSS>` renders a `<link rel="stylesheet">` and `<JS>` renders a
+`<script src>`. Both add a cachebuster based on hashed contents:
 
 ```html
-<link rel="stylesheet" href="/style.css?loyw3v28">
-<script type="module" src="/js/app.js?loyw3v28" defer></script>
+<link rel="stylesheet" href="/style.css?v=loyw3v28">
+<script type="module" src="/js/app.js?v=loyw3v28" defer></script>
 ```
 
 The source can be absolute (relative to the webroot) or relative to the Astro
@@ -180,7 +183,7 @@ For a `.ts` or `.tsx` source, `<JS>` changes the rendered extension to `.js`:
 ```
 
 ```html
-<script type="module" src="script.js?loyw3v28"></script>
+<script type="module" src="/script.js?v=loyw3v28"></script>
 ```
 
 ## ES3 and Babel
@@ -216,21 +219,30 @@ If you do care about targeting ancient browsers, keep in mind:
   async/await
 - We don't polyfill Map/Set because we have no use for them, either
 
-`astrohp build` compiles all directory targets after Astro renders the pages.
-`astrohp dev` performs an initial compilation, watches source files through
-Vite, recompiles the changed file, and reloads the page. Raw `.ts` and `.tsx`
-files are never served.
-
 ## Cache directories
 
-Each webroot contains one hidden cache directory:
+AstroHP uses a few hidden cache directories:
 
 ```text
-.caches/
-  .astro/
-    vite/
-  dist/
+[project]/
+  astrohp.mts
+  .caches/
+    .astro/
+      vite/
+  [webroot]/
+    .caches/
+      dist/
+        _astro/
+        .server/
 ```
+
+- `.astro` contains Astro build metadata
+- `.astro/vite` contains Vite build metadata
+- `dist/_astro` contains Astro runtime dependencies (stuff like styles, scripts, images)
+- `dist/.server` contains server software for dynamic pages
+- `dist` contains built versions of static pages
+
+With `webroot: '.'`, the two `.caches/` directories will be combined.
 
 You probably want to add `.caches/` to your `.gitignore`.
 

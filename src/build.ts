@@ -2,8 +2,8 @@ import type * as astro from "astro";
 import fs from "node:fs";
 import path from "node:path";
 import { generateApacheConfig } from "./apache.js";
-import { compileScripts } from "./babel.js";
-import type { ScriptBundles } from "./js.js";
+import { compileScripts, type ScriptCache } from "./babel.js";
+import type { AssetBundles } from "./bundles.js";
 import { serverPort } from "./live-server.js";
 import type { AstrohpResolvedRoutes, Webroot } from "./webroot.js";
 
@@ -58,7 +58,8 @@ export async function buildSite(
 	config: astro.AstroInlineConfig,
 	resolvedRoutes: () => AstrohpResolvedRoutes | undefined,
 	legacySources: Iterable<string> = [],
-	bundles?: ScriptBundles,
+	bundles?: AssetBundles,
+	legacyCache?: ScriptCache,
 ): Promise<string> {
 	process.env.ASTRO_TELEMETRY_DISABLED ||= "1";
 	const { build } = await import("astro");
@@ -83,24 +84,19 @@ export async function buildSite(
 		if (cleanupFallback) removeEmptyDirectory(fallbackAstro);
 	}
 	await bundles?.writeTo(webroot.nextDist, legacySources);
-	await compileScripts(webroot, legacySources, webroot.nextDist);
+	await compileScripts(webroot, legacySources, webroot.nextDist, legacyCache);
 
 	if (webroot.adapter === "apache-cgi") {
 		const server = path.join(webroot.nextDist, ".server");
-		fs.copyFileSync(new URL("./cgi.js", import.meta.url), path.join(server, "cgi.mjs"));
-		const launcher = path.join(server, "astrohp.mjs");
-		fs.writeFileSync(
-			launcher,
-			[
-				`#!${webroot.runtimePath ?? "/usr/bin/env bun"}`,
-				'import { runCGI } from "./cgi.mjs";',
-				'try { await runCGI(() => import("./entry.mjs")); }',
-				"catch (error) { console.error(error); process.exit(1); }",
-				"process.exit(0);",
-				"",
-			].join("\n"),
-			{ mode: 0o755 },
-		);
+		for (const name of ["cgi-runtime", "cgi"]) {
+			let code = fs.readFileSync(new URL(`./cgi-server/${name}.js`, import.meta.url), "utf8");
+			// These modules are copied outside the package as .mjs files. Their
+			// sibling imports must use the deployed extension, too.
+			code = code.replace(/(["']\.\/[^"']+)\.js(["'])/g, "$1.mjs$2")
+				.replace(/^\/\/# sourceMappingURL=.*$/m, "");
+			if (name === "cgi") code = `#!${webroot.runtimePath ?? "/usr/bin/env bun"}\n${code}`;
+			fs.writeFileSync(path.join(server, `${name}.mjs`), code, { mode: name === "cgi" ? 0o755 : 0o644 });
+		}
 	}
 	publishDist(webroot);
 	if (webroot.adapter === "apache-proxy" || webroot.adapter === "apache-cgi") {

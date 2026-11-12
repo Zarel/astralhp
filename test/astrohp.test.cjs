@@ -1,6 +1,7 @@
 "use strict";
 
 const assert = require("node:assert/strict");
+const { createHash } = require("node:crypto");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
@@ -450,7 +451,7 @@ test("rejects invalid executable configuration", async t => {
 	);
 });
 
-test("cachebusts a local asset with its base-36 modification time", t => {
+test("cachebusts file contents regardless of modification time", t => {
 	const webroot = fs.mkdtempSync(path.join(os.tmpdir(), "astrohp-test-"));
 	const site = new Webroot({ webroot });
 	t.after(() => fs.rmSync(webroot, { recursive: true, force: true }));
@@ -460,31 +461,39 @@ test("cachebusts a local asset with its base-36 modification time", t => {
 	fs.utimesSync(filename, new Date(1_700_000_000_000), new Date(1_700_000_000_000));
 	assert.equal(
 		cachebust(site, "/style.css", new URL("https://example.test/page")),
-		`/style.css?${(1_700_000_000_000).toString(36)}`,
+		`/style.css?v=${createHash("sha256").update("style").digest("hex").slice(0, 16)}`,
 	);
 
 	fs.utimesSync(filename, new Date(1_700_000_001_000), new Date(1_700_000_001_000));
 	assert.equal(
 		cachebust(site, "/style.css", new URL("https://example.test/page")),
-		`/style.css?${(1_700_000_001_000).toString(36)}`,
+		`/style.css?v=${createHash("sha256").update("style").digest("hex").slice(0, 16)}`,
+	);
+	fs.writeFileSync(filename, "changed");
+	fs.utimesSync(filename, new Date(1_700_000_001_000), new Date(1_700_000_001_000));
+	assert.equal(
+		cachebust(site, "/style.css", new URL("https://example.test/page")),
+		`/style.css?v=${createHash("sha256").update("changed").digest("hex").slice(0, 16)}`,
 	);
 });
 
-test("maps TypeScript script URLs to cachebusted JavaScript", t => {
+test("maps TypeScript script URLs to hashes of compiled JavaScript", async t => {
 	const webroot = fs.mkdtempSync(path.join(os.tmpdir(), "astrohp-test-"));
 	const site = new Webroot({ webroot });
 	t.after(() => fs.rmSync(webroot, { recursive: true, force: true }));
 
 	const filename = path.join(webroot, "script.tsx");
 	fs.writeFileSync(filename, "script");
-	fs.utimesSync(filename, new Date(1_700_000_000_000), new Date(1_700_000_000_000));
+	await compileScripts(site, [filename]);
+	const compiled = fs.readFileSync(path.join(site.dist, "script.js"));
+	fs.rmSync(filename);
 	assert.equal(
 		cachebustScript(
 			site,
 			"script.tsx",
 			new URL("https://example.test/page"),
 		),
-		`script.js?${(1_700_000_000_000).toString(36)}`,
+		`script.js?v=${createHash("sha256").update(compiled).digest("hex").slice(0, 16)}`,
 	);
 });
 
@@ -497,7 +506,7 @@ test("resolves cachebusted assets relative to the rendered page", t => {
 	const filename = path.join(webroot, "articles", "style.css");
 	fs.writeFileSync(filename, "style");
 	fs.utimesSync(filename, new Date(1_700_000_000_000), new Date(1_700_000_000_000));
-	const suffix = (1_700_000_000_000).toString(36);
+	const suffix = `v=${createHash("sha256").update("style").digest("hex").slice(0, 16)}`;
 
 	assert.equal(
 		cachebust(
@@ -639,7 +648,7 @@ test("does not follow a public-looking symlink into a private directory", t => {
 
 test("identifies private directories at any URL depth", () => {
 	assert.equal(exampleWebroot.isPrivateRequest("/.caches/file.txt"), true);
-	assert.equal(exampleWebroot.isPrivateRequest("/.server/entry.mjs"), true);
+	assert.equal(exampleWebroot.isPrivateRequest("/.server/app.mjs"), true);
 	assert.equal(exampleWebroot.isPrivateRequest("/assets/node_modules/file.js"), true);
 	assert.equal(exampleWebroot.isPrivateRequest("/assets/Node_Modules/file.js"), true);
 	assert.equal(exampleWebroot.isPrivateRequest("/assets/file.js"), false);
@@ -659,6 +668,7 @@ test("places generated files in a hidden directory inside the webroot", t => {
 		port: 4321,
 		runtimePath: undefined,
 		caches: cache,
+		projectCaches: cache,
 		astroCache: path.join(cache, ".astro"),
 		dist: path.join(cache, "dist"),
 		nextDist: path.join(cache, "next-dist"),
@@ -666,6 +676,23 @@ test("places generated files in a hidden directory inside the webroot", t => {
 		publicDir: path.join(cache, ".astro", "public"),
 		viteCache: path.join(cache, ".astro", "vite"),
 	});
+});
+
+test("keeps tooling caches beside the config and build output inside the webroot", () => {
+	const project = path.resolve("project");
+	const configFile = path.join(project, "astrohp.mts");
+	const site = new Webroot({ webroot: "www" }, configFile);
+	assert.equal(site.projectCaches, path.join(project, ".caches"));
+	assert.equal(site.astroCache, path.join(project, ".caches/.astro"));
+	assert.equal(site.viteCache, path.join(project, ".caches/.astro/vite"));
+	assert.equal(site.publicDir, path.join(project, ".caches/.astro/public"));
+	assert.equal(site.dist, path.join(project, "www/.caches/dist"));
+	assert.equal(site.nextDist, path.join(project, "www/.caches/next-dist"));
+	assert.equal(site.previousDist, path.join(project, "www/.caches/previous-dist"));
+	const sameRoot = new Webroot({ webroot: "." }, configFile);
+	assert.equal(sameRoot.projectCaches, sameRoot.caches);
+	assert.equal(sameRoot.astroCache, path.join(sameRoot.caches, ".astro"));
+	assert.equal(sameRoot.viteCache, path.join(sameRoot.astroCache, "vite"));
 });
 
 test("publishes a completed dist with a quick directory swap", t => {
@@ -718,7 +745,7 @@ test("resolves preserve-format dist output", t => {
 	fs.writeFileSync(path.join(distRoot, "index.html"), "index");
 	fs.writeFileSync(path.join(distRoot, "download.html"), "download");
 	fs.mkdirSync(path.join(distRoot, ".server"));
-	fs.writeFileSync(path.join(distRoot, ".server", "entry.mjs"), "server");
+	fs.writeFileSync(path.join(distRoot, ".server", "app.mjs"), "server");
 
 	assert.equal(
 		webroot.resolveDistFile("/"),
@@ -728,7 +755,7 @@ test("resolves preserve-format dist output", t => {
 		webroot.resolveDistFile("/download"),
 		fs.realpathSync(path.join(distRoot, "download.html")),
 	);
-	assert.equal(webroot.resolveDistFile("/.server/entry.mjs"), null);
+	assert.equal(webroot.resolveDistFile("/.server/app.mjs"), null);
 	assert.equal(webroot.resolveDistFile("/.caches/file.html"), null);
 });
 
@@ -893,13 +920,15 @@ test("builds the configured Apache proxy adapter", async t => {
 
 	assert.equal(result.status, 0, result.stderr);
 	assert.equal(fs.existsSync(path.join(project, ".astro")), false);
+	assert(fs.statSync(path.join(project, ".caches/.astro/types.d.ts")).isFile());
+	assert.equal(fs.existsSync(path.join(webroot, ".caches/.astro")), false);
 	assert.match(
 		fs.readFileSync(path.join(webroot, ".caches/dist/index.html"), "utf8"),
 		/Built by AstroHP$/,
 	);
 	const serverEntrypoint = path.join(
 		webroot,
-		".caches/dist/.server/entry.mjs",
+		".caches/dist/.server/app.mjs",
 	);
 	assert(fs.statSync(serverEntrypoint).isFile());
 	assert.equal(
@@ -1055,7 +1084,7 @@ test("builds every discovered webroot", t => {
 	assert.equal(result.status, 0, result.stderr);
 	for (const webroot of [first, second]) {
 		assert(fs.statSync(path.join(webroot, ".caches/dist/index.html")).isFile());
-		assert(fs.statSync(path.join(webroot, ".caches/dist/.server/entry.mjs")).isFile());
+		assert(fs.statSync(path.join(webroot, ".caches/dist/.server/app.mjs")).isFile());
 	}
 });
 

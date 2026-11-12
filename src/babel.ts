@@ -74,33 +74,35 @@ function sourceMapComment(filename: string): string {
 	return `\n//# sourceMappingURL=${path.basename(filename)}.map`;
 }
 
+export interface CompiledScript {
+	code: string;
+	map?: string;
+}
+
+export type ScriptCache = Map<string, Promise<CompiledScript | null>>;
+
 function writeCompiledFile(
 	source: string,
 	output: string,
-	result: babel.BabelFileResult,
+	result: CompiledScript,
 ): void {
-	if (result.code === null || result.code === undefined) return;
 	fs.mkdirSync(path.dirname(output), { recursive: true });
 
-	let code = result.code;
 	if (result.map) {
-		const mapFile = `${output}.map`;
-		result.map.file = path.basename(output);
-		fs.writeFileSync(mapFile, JSON.stringify(result.map));
-		if (!code.includes("sourceMappingURL=")) code += sourceMapComment(output);
+		fs.writeFileSync(`${output}.map`, result.map);
 	} else {
 		fs.rmSync(`${output}.map`, { force: true });
 	}
 
-	fs.writeFileSync(output, code);
+	fs.writeFileSync(output, result.code);
 	fs.chmodSync(output, fs.statSync(source).mode);
 }
 
-export async function compileScript(
+export async function prepareScript(
 	webroot: Webroot,
 	source: string,
 	dist: string = webroot.dist,
-): Promise<string | null> {
+): Promise<CompiledScript | null> {
 	const output = scriptOutputPath(webroot.path, dist, source);
 
 	const result = await babel.transformFileAsync(source, {
@@ -111,6 +113,28 @@ export async function compileScript(
 			.split(path.sep)
 			.join("/"),
 	});
+	if (result?.code === null || result?.code === undefined) return null;
+	let code = result.code;
+	if (result.map) {
+		result.map.file = path.basename(output);
+		if (!code.includes("sourceMappingURL=")) code += sourceMapComment(output);
+	}
+	return { code, ...(result.map ? { map: JSON.stringify(result.map) } : {}) };
+}
+
+export async function compileScript(
+	webroot: Webroot,
+	source: string,
+	dist: string = webroot.dist,
+	cache?: ScriptCache,
+): Promise<string | null> {
+	const output = scriptOutputPath(webroot.path, dist, source);
+	let pending = cache?.get(source);
+	if (!pending) {
+		pending = prepareScript(webroot, source, dist);
+		cache?.set(source, pending);
+	}
+	const result = await pending;
 	if (!result) {
 		fs.rmSync(output, { force: true });
 		fs.rmSync(`${output}.map`, { force: true });
@@ -125,9 +149,10 @@ export async function compileScripts(
 	webroot: Webroot,
 	sources: Iterable<string>,
 	dist: string = webroot.dist,
+	cache?: ScriptCache,
 ): Promise<string[]> {
 	const outputs = await Promise.all(
-		[...new Set(sources)].map(source => compileScript(webroot, source, dist)),
+		[...new Set(sources)].map(source => compileScript(webroot, source, dist, cache)),
 	);
 	return outputs.filter(output => output !== null);
 }

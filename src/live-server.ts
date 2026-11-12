@@ -190,7 +190,7 @@ export class AstroHPServer {
 					`No build found. Run "astrohp build ${webroot.path}" first.`,
 				);
 			}
-			const entrypoint = path.join(webroot.dist, ".server", "entry.mjs");
+			const entrypoint = path.join(webroot.dist, ".server", "app.mjs");
 			if (!fs.existsSync(entrypoint)) {
 				throw new Error(
 					`Build for ${webroot.path} has no Astro server entrypoint. Run "astrohp build ${webroot.path}" again.`,

@@ -113,6 +113,7 @@ export class Webroot {
 	readonly port: number;
 	readonly runtimePath: string | undefined;
 	readonly caches: string;
+	readonly projectCaches: string;
 	readonly astroCache: string;
 	readonly viteCache: string;
 	readonly dist: string;
@@ -140,7 +141,8 @@ export class Webroot {
 		this.port = config.port ?? 4321;
 		this.runtimePath = config.runtimePath;
 		this.caches = path.join(this.path, ".caches");
-		this.astroCache = path.join(this.caches, ".astro");
+		this.projectCaches = path.join(this.configFile ? path.dirname(this.configFile) : this.path, ".caches");
+		this.astroCache = path.join(this.projectCaches, ".astro");
 		this.viteCache = path.join(this.astroCache, "vite");
 		this.dist = path.join(this.caches, "dist");
 		this.nextDist = path.join(this.caches, "next-dist");

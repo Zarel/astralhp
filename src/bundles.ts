@@ -3,10 +3,12 @@ import { createHash } from "node:crypto";
 import fs from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
+import { compileAsync } from "sass";
 import type * as vite from "vite";
+import { assetReferences } from "./asset-references.js";
 import { scriptOutputPath } from "./babel.js";
-import { scriptReferences } from "./script-references.js";
+import { contentHash } from "./cachebuster.js";
 import type { Webroot } from "./webroot.js";
 
 // Resolve the toolchain from Astro, including when it has a nested Vite install.
@@ -24,7 +26,7 @@ function publicURL(filename: string): string {
 	return "/" + filename.split(path.sep).map(encodeURIComponent).join("/");
 }
 
-export class ScriptBundles {
+export class AssetBundles {
 	private readonly webroot: Webroot;
 	private readonly bundles = new Map<string, Promise<Bundle>>();
 	private readonly owners = new Map<string, string>();
@@ -46,10 +48,17 @@ export class ScriptBundles {
 	}
 
 	private async compile(source: string): Promise<Bundle> {
-		const entry = path.relative(this.webroot.path, source).replace(/\.(?:tsx?|jsx|cjs)$/, ".js");
+		const scss = source.endsWith(".scss");
+		const entry = path.relative(this.webroot.path, source).replace(
+			scss ? /\.scss$/ : /\.(?:tsx?|jsx|cjs)$/,
+			scss ? ".css" : ".js",
+		);
 		const owner = this.owners.get(entry);
-		if (owner && owner !== source) throw new Error(`JS output collision: ${owner} and ${source} both produce ${entry}`);
+		if (owner && owner !== source) {
+			throw new Error(`Asset output collision: ${owner} and ${source} both produce ${entry}`);
+		}
 		this.owners.set(entry, source);
+		if (scss) return this.compileScss(source, entry);
 		const directory = path.dirname(entry);
 		const dependencies = new Set<string>([source]);
 		const { build } = await import(viteURL) as typeof vite;
@@ -105,6 +114,27 @@ export class ScriptBundles {
 		return { src: `${publicURL(entry)}?v=${hash.digest("hex").slice(0, 16)}`, styles, files, dependencies };
 	}
 
+	private async compileScss(source: string, entry: string): Promise<Bundle> {
+		const result = await compileAsync(source, {
+			style: "compressed",
+			sourceMap: true,
+			sourceMapIncludeSources: true,
+		});
+		const files = new Map<string, string | Uint8Array>();
+		let css = result.css;
+		if (result.sourceMap) {
+			files.set(`${entry}.map`, JSON.stringify(result.sourceMap));
+			css += `\n/*# sourceMappingURL=${encodeURIComponent(path.basename(entry))}.map */`;
+		}
+		files.set(entry, css);
+		return {
+			src: `${publicURL(entry)}?v=${contentHash(css)}`,
+			styles: [],
+			files,
+			dependencies: new Set(result.loadedUrls.filter(url => url.protocol === "file:").map(url => fileURLToPath(url))),
+		};
+	}
+
 	async writeTo(dist: string, legacySources: Iterable<string> = []): Promise<void> {
 		const legacyOutputs = new Set(
 			[...legacySources].map(source => path.relative(dist, scriptOutputPath(this.webroot.path, dist, source))),
@@ -131,7 +161,7 @@ export class ScriptBundles {
 		let server: vite.ViteDevServer | undefined;
 		let queue = Promise.resolve();
 		return {
-			name: "astrohp:js",
+			name: "astrohp:bundles",
 			enforce: "pre",
 			configureServer: devServer => {
 				server = devServer;
@@ -159,7 +189,7 @@ export class ScriptBundles {
 						for (const environment of Object.values(server!.environments)) environment.moduleGraph.invalidateAll();
 						server!.ws.send({ type: "full-reload", path: "*" });
 					}).catch(error => {
-						server!.config.logger.error(`AstroHP JS: ${error.message}`);
+						server!.config.logger.error(`AstroHP asset: ${error.message}`);
 						server!.ws.send({ type: "error", err: { message: error.message, stack: error.stack } });
 					});
 				});
@@ -168,15 +198,31 @@ export class ScriptBundles {
 				order: "pre",
 				handler: async (code, id) => {
 					if (!id.endsWith(".astro")) return;
-					const references = scriptReferences(this.webroot, id, code, "JS");
-					if (!references.scripts.length) return;
+					const scripts = assetReferences(this.webroot, id, code, "JS").assets;
+					const styles = assetReferences(this.webroot, id, code, "CSS").assets;
+					if (!scripts.length && !styles.length) return;
 					await queue;
 					const output = new MagicString(code);
-					for (const reference of references.scripts) {
+					for (const reference of scripts) {
 						const bundle = await this.bundle(reference.source);
 						output.overwrite(reference.start, reference.end, `{${JSON.stringify(bundle.src)}}`);
 						output.appendLeft(reference.insert, ` __astrohpStyles={${JSON.stringify(bundle.styles)}}`);
 						server?.watcher.add([...bundle.dependencies]);
+					}
+					for (const reference of styles) {
+						output.overwrite(reference.start, reference.end, `{${JSON.stringify(reference.pathname)}}`);
+						if (reference.source.endsWith(".scss")) {
+							const bundle = await this.bundle(reference.source);
+							output.appendLeft(reference.insert, ` __astrohpHref={${JSON.stringify(bundle.src)}}`);
+							server?.watcher.add([...bundle.dependencies]);
+						} else {
+							const entry = path.relative(this.webroot.path, reference.source);
+							const owner = this.owners.get(entry);
+							if (owner && owner !== reference.source) {
+								throw new Error(`Asset output collision: ${owner} and ${reference.source} both use ${entry}`);
+							}
+							this.owners.set(entry, reference.source);
+						}
 					}
 					if (server) await this.writeTo(this.webroot.dist, legacySources);
 					return {

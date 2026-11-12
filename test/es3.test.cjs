@@ -1,13 +1,20 @@
 "use strict";
 
 const assert = require("node:assert/strict");
+const { createHash } = require("node:crypto");
 const fs = require("node:fs");
 const path = require("node:path");
 const net = require("node:net");
 const test = require("node:test");
 const { build, dev, Webroot } = require("astrohp");
-const { scriptReferences } = require("../dist/script-references.js");
+const { assetReferences } = require("../dist/asset-references.js");
 const { AstroHPServer } = require("../dist/live-server.js");
+
+function scriptURL(site, name) {
+	const hash = createHash("sha256").update(fs.readFileSync(path.join(site.dist, `scripts/${name}.js`)))
+		.digest("hex").slice(0, 16);
+	return `/scripts/${name}.js?v=${hash}`;
+}
 
 function fixture(t) {
 	const root = fs.mkdtempSync(path.resolve(__dirname, "../.astrohp-test-es3-"));
@@ -28,7 +35,7 @@ import ES3 from "./unrelated.astro";
 <ES3 src={anything} />
 {false && <Legacy src="../scripts/legacy.ts" defer />}
 <Assets.ES3 src="/scripts/legacy.ts" />`;
-	const result = scriptReferences(site, path.join(site.path, "nested/page.astro"), source);
+	const result = assetReferences(site, path.join(site.path, "nested/page.astro"), source);
 	assert.deepEqual(result.sources, [path.join(site.path, "scripts/legacy.ts")]);
 	assert.match(result.code, /<Legacy src=\{"\/scripts\/legacy.ts"\} defer/);
 	assert.match(result.code, /😀<!-- <Legacy src="missing.ts" \/> -->/);
@@ -38,7 +45,7 @@ import ES3 from "./unrelated.astro";
 test("rejects dynamic, missing, external, and escaping ES3 sources", t => {
 	const site = fixture(t);
 	const filename = path.join(site.path, "index.astro");
-	const check = tag => scriptReferences(site, filename, `---\nimport { ES3 } from "astrohp/components";\n---\n${tag}`);
+	const check = tag => assetReferences(site, filename, `---\nimport { ES3 } from "astrohp/components";\n---\n${tag}`);
 	for (const tag of ["<ES3 src={name} />", "<ES3 {...props} />", '<ES3 src="/scripts/legacy.ts" src="other.ts" />']) {
 		assert.throws(() => check(tag), /requires a literal src/);
 	}
@@ -94,7 +101,11 @@ export const prerender = true;
 	}
 	assert(!fs.existsSync(path.join(site.dist, "scripts/unused.js")));
 	assert(!fs.existsSync(path.join(site.dist, "index.html")));
-	assert.match(fs.readFileSync(path.join(site.dist, "about.html"), "utf8"), /src="\/scripts\/static.js\?[a-z0-9]+"/);
+	assert.match(fs.readFileSync(path.join(site.dist, "about.html"), "utf8"), /src="\/scripts\/static.js\?v=[a-f0-9]{16}"/);
+	const originalURL = scriptURL(site, "static");
+	assert(fs.readFileSync(path.join(site.dist, "about.html"), "utf8").includes(`src="${originalURL}"`));
+	// Dynamic pages use the compiled hash without requiring the TypeScript source.
+	fs.rmSync(path.join(site.path, "scripts/legacy.ts"));
 	const server = new AstroHPServer([site], { port: 0 });
 	await server.listen();
 	try {
@@ -102,18 +113,26 @@ export const prerender = true;
 		const response = await fetch(`${base}/?legacy=1`);
 		assert.equal(response.status, 200);
 		const html = await response.text();
-		assert.match(html, /src="\/scripts\/legacy.js\?[a-z0-9]+"/);
+		assert.match(html, /src="\/scripts\/legacy.js\?v=[a-f0-9]{16}"/);
 		assert.match(html, /data-test="shared"/);
-		assert.match(html, /src="\/scripts\/conditional.js\?[a-z0-9]+"/);
+		assert.match(html, /src="\/scripts\/conditional.js\?v=[a-f0-9]{16}"/);
+		for (const name of ["legacy", "conditional"]) assert(html.includes(`src="${scriptURL(site, name)}"`));
 	} finally {
 		await server.close();
 	}
 	// Rebuilding after removing a reference must not retain its old output.
 	fs.writeFileSync(path.join(site.path, "index.astro"), "No legacy scripts");
+	fs.writeFileSync(path.join(site.path, "scripts/static.ts"), "const prerendered: number | string = 2;");
 	await build(site);
 	assert(!fs.existsSync(path.join(site.dist, "scripts/legacy.js")));
 	assert(!fs.existsSync(path.join(site.dist, "scripts/conditional.js")));
 	assert(fs.existsSync(path.join(site.dist, "scripts/static.js")));
+	assert.equal(scriptURL(site, "static"), originalURL);
+	assert(fs.readFileSync(path.join(site.dist, "about.html"), "utf8").includes(`src="${originalURL}"`));
+	fs.writeFileSync(path.join(site.path, "scripts/static.ts"), "const prerendered: number = 3;");
+	await build(site);
+	assert.notEqual(scriptURL(site, "static"), originalURL);
+	assert(fs.readFileSync(path.join(site.dist, "about.html"), "utf8").includes(`src="${scriptURL(site, "static")}"`));
 });
 
 async function until(check) {
@@ -139,12 +158,15 @@ test("development compiles and watches ES3 references without compiling unrelate
 		const base = `http://localhost:${port}`;
 		const response = await fetch(base);
 		assert.equal(response.status, 200);
-		assert.match(await response.text(), /src="\/scripts\/legacy.js\?[a-z0-9]+"/);
+		assert((await response.text()).includes(`src="${scriptURL(site, "legacy")}"`));
+		const originalURL = scriptURL(site, "legacy");
 		const output = path.join(site.dist, "scripts/legacy.js");
 		assert.match(fs.readFileSync(output, "utf8"), /var value=1/);
 		assert(!fs.existsSync(path.join(site.dist, "unused.js")));
 		fs.writeFileSync(path.join(site.path, "scripts/legacy.ts"), "const value: number = 42;");
 		await until(() => /var value=42/.test(fs.readFileSync(output, "utf8")));
+		await until(async () => (await (await fetch(base)).text()).includes(`src="${scriptURL(site, "legacy")}"`));
+		assert.notEqual(scriptURL(site, "legacy"), originalURL);
 		assert.match(await (await fetch(`${base}/scripts/legacy.js`)).text(), /var value=42/);
 		fs.writeFileSync(page, "No legacy scripts");
 		await until(async () => (await (await fetch(base)).text()).includes("No legacy scripts") && !fs.existsSync(output));

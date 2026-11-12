@@ -8,26 +8,27 @@ import type { Webroot } from "./webroot.js";
 // The Astro parser exposes its ESTree-compatible AST as Record<string, any>.
 type Node = Record<string, any>;
 
-export interface ScriptReference {
+export interface AssetReference {
 	source: string;
 	start: number;
 	end: number;
 	insert: number;
+	pathname: string;
 }
 
-export interface ScriptReferences {
+export interface AssetReferences {
 	code: string;
 	map: ReturnType<MagicString["generateMap"]>;
 	sources: string[];
-	scripts: ScriptReference[];
+	assets: AssetReference[];
 }
 
-export function scriptReferences(
+export function assetReferences(
 	webroot: Webroot,
 	filename: string,
 	code: string,
-	kind: "ES3" | "JS" = "ES3",
-): ScriptReferences {
+	kind: "ES3" | "JS" | "CSS" = "ES3",
+): AssetReferences {
 	const { ast } = parse(code);
 	const names = new Set<string>();
 	const namespaces = new Set<string>();
@@ -45,7 +46,7 @@ export function scriptReferences(
 	}
 	const output = new MagicString(code);
 	const sources = new Set<string>();
-	const scripts: ScriptReference[] = [];
+	const assets: AssetReference[] = [];
 	const bytes = Buffer.from(code);
 	// Compiler offsets are UTF-8 bytes; MagicString uses UTF-16 offsets.
 	const offset = (byte: number): number => bytes.subarray(0, byte).toString().length;
@@ -63,7 +64,7 @@ export function scriptReferences(
 				const srcs = attributes.filter(attr => attr.type === "JSXAttribute" && attr.name.name === "src");
 				const src = srcs[0];
 				if (srcs.length !== 1 || src?.value?.type !== "Literal" || typeof src.value.value !== "string") {
-					fail('requires a literal src, such as src="/js/app.ts"');
+					fail(`requires a literal src, such as src="${kind === "CSS" ? "/style.scss" : "/js/app.ts"}"`);
 				}
 				// A spread after src could override the statically registered source.
 				if (attributes.slice(attributes.indexOf(src!) + 1).some(attr => attr.type === "JSXSpreadAttribute")) {
@@ -85,15 +86,19 @@ export function scriptReferences(
 				const url = new URL(pathname, "http://astrohp.local/");
 				const target = webroot.resolveFile(url.pathname);
 				if (!target) fail(`source does not exist inside the webroot: ${source}`);
-				if (kind === "JS" && /\.(?:[cm]?js|jsx|tsx?)$/.test(target!) && !target!.endsWith(".d.ts")) {
+				if (kind === "CSS") {
+					if (!/\.(?:css|scss)$/.test(target!)) fail("src must reference a .css or .scss file");
+					sources.add(target!);
+				} else if (kind === "JS" && /\.(?:[cm]?js|jsx|tsx?)$/.test(target!) && !target!.endsWith(".d.ts")) {
 					sources.add(target!);
 				} else if (isBabelSource(target!)) sources.add(target!);
 				else if (!/\.m?js$/.test(target!)) fail("src must reference a .ts, .tsx, .js, or .mjs file");
-				scripts.push({
+				assets.push({
 					source: target!,
 					start: offset(src!.value.start),
 					end: offset(src!.value.end),
 					insert: offset(node.name.end),
+					pathname: url.pathname,
 				});
 				output.overwrite(offset(src!.value.start), offset(src!.value.end), `{${JSON.stringify(url.pathname)}}`);
 			}
@@ -109,6 +114,6 @@ export function scriptReferences(
 		code: output.toString(),
 		map: output.generateMap({ hires: true, source: filename, includeContent: true }),
 		sources: [...sources],
-		scripts,
+		assets,
 	};
 }

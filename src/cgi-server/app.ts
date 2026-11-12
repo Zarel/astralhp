@@ -1,5 +1,5 @@
 /**
- * Sends a request to Astro.
+ * Renders CGI requests with Astro.
  */
 
 import { createApp } from "astro/app/entrypoint";

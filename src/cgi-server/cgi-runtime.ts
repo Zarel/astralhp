@@ -1,5 +1,5 @@
 /**
- * Handles the CGI request.
+ * Converts CGI input to Request, and Response to CGI output.
  */
 
 import { Console } from "node:console";

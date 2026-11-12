@@ -7,7 +7,7 @@ const path = require("node:path");
 const { spawnSync } = require("node:child_process");
 const test = require("node:test");
 const { build, Webroot } = require("astrohp");
-const { cgiRequest } = require("../dist/cgi.js");
+const { cgiRequest } = require("../dist/cgi-server/cgi-runtime.js");
 const { apacheBlock } = require("../dist/apache.js");
 const { AstroHPServer } = require("../dist/live-server.js");
 
@@ -59,7 +59,7 @@ test("CGI Apache rules preserve static routing without requiring proxy modules",
 	const block = apacheBlock(0, [{ pattern: "/live", regex: "^live/?$" }], "apache-cgi");
 	assert.match(block, /Options \+ExecCGI/);
 	assert.match(block, /SetHandler cgi-script/);
-	assert.match(block, /"\.caches\/dist\/\.server\/astrohp\.mjs" \[END\]/);
+	assert.match(block, /"\.caches\/dist\/\.server\/cgi\.mjs" \[END\]/);
 	assert.doesNotMatch(block, /ProxyPreserveHost|RequestHeader|127\.0\.0\.1/);
 	assert.doesNotMatch(apacheBlock(0, [], "apache-cgi"), /ExecCGI|cgi-script/);
 	assert.throws(() => new Webroot({ webroot: "/tmp", runtimePath: "/bin/bun\ninvalid" }), /runtimePath/);
@@ -106,7 +106,7 @@ const body = Astro.request.method === "POST" ? (await Astro.request.formData()).
 `,
 		);
 		await build(webroot);
-		const launcher = path.join(webroot.dist, ".server/astrohp.mjs");
+		const launcher = path.join(webroot.dist, ".server/cgi.mjs");
 		assert.equal(fs.statSync(launcher).mode & 0o777, 0o755);
 		assert.equal(fs.readFileSync(launcher, "utf8").split("\n")[0], `#!${runtimePath}`);
 		assert.match(fs.readFileSync(path.join(root, ".htaccess"), "utf8"), /SetHandler cgi-script/);
@@ -114,7 +114,7 @@ const body = Astro.request.method === "POST" ? (await Astro.request.formData()).
 		assert.match(fs.readFileSync(path.join(webroot.dist, "about.html"), "utf8"), /Static about/);
 		assert.match(
 			fs.readFileSync(path.join(root, ".htaccess"), "utf8"),
-			/RewriteRule "\^\$" "\.caches\/dist\/\.server\/astrohp\.mjs" \[END\]/,
+			/RewriteRule "\^\$" "\.caches\/dist\/\.server\/cgi\.mjs" \[END\]/,
 		);
 		function request(overrides = {}, body = "") {
 			const result = spawnSync(launcher, [], {
