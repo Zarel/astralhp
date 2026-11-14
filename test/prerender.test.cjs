@@ -5,7 +5,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const test = require("node:test");
 const { build, Webroot } = require("astrohp");
-const { validateConfig } = require("../dist/webroot.js");
+const { validateConfig } = require("../dist/config-loader.js");
 
 for (const adapter of ["node", "apache-proxy", "apache-cgi"]) {
 	test(`${adapter} prerenders by default and respects config and page overrides`, async t => {

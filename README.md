@@ -30,6 +30,8 @@ The live server listens on `127.0.0.1:4321` by default. Set the `HOST` or
 
 ## Configuration
 
+Run `astrohp init` for interactive setup.
+
 While AstroHP can work without a config file, it prefers to have `.astrohp.mts`
 in the webroot, or `astrohp.mts` in a parent directory of the webroot:
 
@@ -256,7 +258,3 @@ You probably want to add `.caches/` to your `.gitignore`.
 
 Run `npm run build` to compile AstroHP and check its Astro components. Run
 `npm test` for the full test suite.
-
-# TODO
-
-- `astrohp init`

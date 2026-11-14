@@ -1,13 +1,14 @@
 import path from "node:path";
 
 import { build, dev, start } from "./index.js";
+import { init } from "./init.js";
 import { Webroot } from "./webroot.js";
 
 function usage() {
-	return "Usage: astrohp [<dev|build|start> [directory]]";
+	return "Usage: astrohp [<init|dev|build|start> [directory]]";
 }
 
-const COMMANDS = new Set(["dev", "build", "start"]);
+const COMMANDS = new Set(["init", "dev", "build", "start"]);
 
 async function main(argv: string[]) {
 	const [command, directory, ...extra] = argv;
@@ -30,6 +31,10 @@ async function main(argv: string[]) {
 	}
 	if (extra.length || !COMMANDS.has(command)) {
 		throw new Error(usage());
+	}
+	if (command === "init") {
+		await init(directory);
+		return;
 	}
 	if (directory === undefined && (command === "build" || command === "start")) {
 		const webroots = await Webroot.requireAll();

@@ -2,71 +2,20 @@ import type * as astro from "astro";
 import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import { pathToFileURL } from "node:url";
-import type { Adapter, Config, WebrootConfig } from "./config.d.ts";
+import type { Adapter, WebrootConfig } from "./config.d.ts";
 
-const CONFIG_FILENAMES = ["astrohp.mts", ".astrohp.mts"] as const;
-const IGNORED_DIRECTORIES = new Set(["node_modules", ".git", ".caches"]);
+import {
+	type LoadedWebrootConfig,
+	requireConfig,
+	requireConfigs,
+	resolveConfig,
+	searchConfigs,
+	validateConfig,
+} from "./config-loader.js";
+
+export { validateConfig } from "./config-loader.js";
+
 const PRIVATE_DIRECTORIES = new Set([".caches", ".server", "node_modules"]);
-const ADAPTERS = new Set<Adapter>(["node", "apache-proxy", "apache-cgi", "apache-static"]);
-
-export function validateConfig(value: any, filename: string): Config {
-	// note to self: if this gets too complicated later, switch to Zod
-	if (!value || typeof value !== "object" || Array.isArray(value)) {
-		throw new Error(`${filename} must export a configuration object named "config"`);
-	}
-
-	for (const key of Object.keys(value)) {
-		if (key !== "webroot" && key !== "webroots" && key !== "adapter" && key !== "port" && key !== "runtimePath" && key !== "prerender") {
-			throw new Error(`Unknown AstroHP configuration option: ${key}`);
-		}
-	}
-	if (value.webroots !== undefined) {
-		if (value.webroot !== undefined) throw new Error("Specify either webroot or webroots, not both");
-		if (!Array.isArray(value.webroots) || !value.webroots.length) {
-			throw new Error("AstroHP configuration option webroots must be a non-empty array");
-		}
-		for (const [index, entry] of value.webroots.entries()) {
-			const label = `${filename}: webroots[${index}]`;
-			const options = typeof entry === "string" ? { webroot: entry } : entry;
-			if (!options || typeof options !== "object" || Array.isArray(options) ||
-				typeof options.webroot !== "string" || !options.webroot) {
-				throw new Error(`${label} must be a non-empty path or an object with a non-empty webroot`);
-			}
-			if ("webroots" in options) throw new Error(`${label} cannot contain nested webroots`);
-			validateConfig(options, label);
-		}
-	}
-	if (
-		value.webroot !== undefined &&
-		(typeof value.webroot !== "string" || !value.webroot)
-	) {
-		throw new Error("AstroHP configuration option webroot must be a non-empty string");
-	}
-	if (
-		value.adapter !== undefined &&
-		(typeof value.adapter !== "string" || !ADAPTERS.has(value.adapter as Adapter))
-	) {
-		throw new Error('AstroHP configuration option adapter must be "node", "apache-proxy", "apache-cgi", or "apache-static"');
-	}
-	if (value.prerender !== undefined && typeof value.prerender !== "boolean") {
-		throw new Error("AstroHP configuration option prerender must be a boolean");
-	}
-	if (
-		value.port !== undefined &&
-		(typeof value.port !== "number" || !Number.isInteger(value.port) ||
-			value.port < 0 || value.port > 65535)
-	) {
-		throw new Error("AstroHP configuration option port must be an integer from 0 to 65535");
-	}
-	if (
-		value.runtimePath !== undefined && (typeof value.runtimePath !== "string" ||
-			!path.isAbsolute(value.runtimePath) || /[\s\0]/.test(value.runtimePath))
-	) {
-		throw new Error("AstroHP configuration option runtimePath must be an absolute path without whitespace");
-	}
-	return value as Config;
-}
 
 export interface AstrohpPage {
 	pattern: string;
@@ -201,129 +150,24 @@ export class Webroot {
 		this.publicDir = path.join(this.astroCache, "public");
 	}
 
-	private static configIn(directory: string): string | null {
-		const matches: string[] = [];
-		for (const basename of CONFIG_FILENAMES) {
-			const filename = path.join(directory, basename);
-			try {
-				if (fs.statSync(filename).isFile()) matches.push(filename);
-			} catch (error) {
-				if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
-			}
-		}
-		if (matches.length > 1) {
-			throw new Error(
-				`Found both ${CONFIG_FILENAMES.join(" and ")} in ${directory}`,
-			);
-		}
-		return matches[0] ?? null;
+	private static fromLoadedConfig(loaded: LoadedWebrootConfig): Webroot {
+		return new Webroot(loaded.config, loaded.configFile, loaded.isolatedCache);
 	}
 
-	private static findChildConfigs(
-		directory: string,
-		configs: string[],
-	): void {
-		const config = Webroot.configIn(directory);
-		if (config) configs.push(config);
-
-		const entries = fs.readdirSync(directory, { withFileTypes: true })
-			.sort((a, b) => a.name.localeCompare(b.name));
-		for (const entry of entries) {
-			if (!entry.isDirectory() || IGNORED_DIRECTORIES.has(entry.name)) continue;
-			Webroot.findChildConfigs(path.join(directory, entry.name), configs);
-		}
+	static async search(directory: string = process.cwd()): Promise<Webroot[]> {
+		return (await searchConfigs(directory)).map(Webroot.fromLoadedConfig);
 	}
 
-	private static async importConfig(filename: string): Promise<Config> {
-		const url = pathToFileURL(filename);
-		url.searchParams.set("mtime", String(fs.statSync(filename).mtimeMs));
-		const module = await import(/* @vite-ignore */ url.href) as Record<string, unknown>;
-		if (!("config" in module)) {
-			throw new Error(
-				`${filename} must export a configuration object named "config"`,
-			);
-		}
-		return validateConfig(module.config, filename);
+	static async requireAll(directory: string = process.cwd()): Promise<Webroot[]> {
+		return (await requireConfigs(directory)).map(Webroot.fromLoadedConfig);
 	}
 
-	static async search(
-		directory: string = process.cwd(),
-	): Promise<Webroot[]> {
-		directory = path.resolve(directory);
-		const configs: string[] = [];
-		Webroot.findChildConfigs(directory, configs);
-
-		let parent = path.dirname(directory);
-		while (parent !== directory) {
-			const config = Webroot.configIn(parent);
-			if (config) configs.push(config);
-			const nextParent = path.dirname(parent);
-			if (nextParent === parent) break;
-			parent = nextParent;
-		}
-
-		const webroots = (await Promise.all(
-			configs.map(async filename => {
-				const { webroots, ...defaults } = await Webroot.importConfig(filename);
-				if (webroots === undefined) return [new Webroot(defaults, filename)];
-				return webroots.map(entry => new Webroot(
-					{ ...defaults, ...(typeof entry === "string" ? { webroot: entry } : entry) },
-					filename,
-					true,
-				));
-			}),
-		)).flat();
-		const webrootsByPath = new Map<string, Webroot>();
-		for (const webroot of webroots) {
-			const existing = webrootsByPath.get(webroot.path);
-			if (existing) {
-				if (existing.configFile === webroot.configFile) {
-					throw new Error(`Webroot ${webroot.path} is configured more than once in ${webroot.configFile}`);
-				}
-				throw new Error(
-					`Webroot ${webroot.path} is configured by both ${existing.configFile} and ${webroot.configFile}`,
-				);
-			}
-			webrootsByPath.set(webroot.path, webroot);
-		}
-		return webroots;
+	static async requireOne(directory: string = process.cwd()): Promise<Webroot> {
+		return Webroot.fromLoadedConfig(await requireConfig(directory));
 	}
 
-	static async requireAll(
-		directory: string = process.cwd(),
-	): Promise<Webroot[]> {
-		const webroots = await Webroot.search(directory);
-		if (!webroots.length) {
-			throw new Error(
-				`Could not find ${CONFIG_FILENAMES.join(" or ")}; specify a webroot directory`,
-			);
-		}
-		return webroots;
-	}
-
-	static async requireOne(
-		directory: string = process.cwd(),
-	): Promise<Webroot> {
-		const webroots = await Webroot.requireAll(directory);
-		if (webroots.length > 1) {
-			throw new Error(
-				`Found multiple AstroHP webroots; specify one:\n${webroots.map(webroot => webroot.path).join("\n")}`,
-			);
-		}
-		return webroots[0]!;
-	}
-
-	static async resolve(
-		root: string,
-		workingDirectory: string = process.cwd(),
-	): Promise<Webroot> {
-		const requestedRoot = path.resolve(workingDirectory, root);
-		const matches = (await Webroot.search(requestedRoot))
-			.filter(webroot => webroot.path === requestedRoot);
-		if (matches.length > 1) {
-			throw new Error(`Found multiple configurations for ${requestedRoot}`);
-		}
-		return matches[0] ?? new Webroot({ webroot: requestedRoot });
+	static async resolve(root: string, workingDirectory: string = process.cwd()): Promise<Webroot> {
+		return Webroot.fromLoadedConfig(await resolveConfig(root, workingDirectory));
 	}
 
 	private requestPathParts(requestUrl: string | undefined): string[] | null {

@@ -8,7 +8,7 @@ const path = require("node:path");
 const { spawnSync } = require("node:child_process");
 const test = require("node:test");
 const { Webroot, dev, start } = require("astrohp");
-const { validateConfig } = require("../dist/webroot.js");
+const { validateConfig } = require("../dist/config-loader.js");
 
 const cli = path.resolve(__dirname, "../astrohp");
 

@@ -1033,7 +1033,7 @@ test("documents all commands", () => {
 	assert.equal(result.status, 0);
 	assert.equal(
 		result.stdout.trim(),
-		"Usage: astrohp [<dev|build|start> [directory]]",
+		"Usage: astrohp [<init|dev|build|start> [directory]]",
 	);
 	assert.equal(result.stderr, "");
 });
