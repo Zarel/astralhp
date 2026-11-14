@@ -82,7 +82,7 @@ for (const runtime of ["Node", "Bun"]) {
 		t.after(() => fs.rmSync(root, { recursive: true, force: true }));
 		fs.writeFileSync(
 			path.join(root, "astrohp.mts"),
-			`export const config = ${JSON.stringify({ webroot: ".", adapter: "apache-cgi", runtimePath })};`,
+			`export const config = ${JSON.stringify({ webroot: ".", adapter: "apache-cgi", runtimePath, prerender: false })};`,
 		);
 		const webroot = await Webroot.resolve(root);
 		assert.equal(webroot.runtimePath, runtimePath);

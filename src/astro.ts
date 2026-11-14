@@ -8,7 +8,9 @@ import type { Webroot } from "./webroot.js";
 interface SerializedWebroot {
 	path: string;
 	configFile: string | null;
+	isolatedCache: boolean;
 	adapter: Webroot["adapter"];
+	prerender: boolean;
 	port: number;
 	runtimePath?: string;
 }
@@ -37,7 +39,9 @@ function serializeWebroot(webroot: Webroot): SerializedWebroot {
 	return {
 		path: webroot.path,
 		configFile: webroot.configFile,
+		isolatedCache: webroot.isolatedCache,
 		adapter: webroot.adapter,
+		prerender: webroot.prerender,
 		port: webroot.port,
 		...(webroot.runtimePath === undefined ? {} : { runtimePath: webroot.runtimePath }),
 	};

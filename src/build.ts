@@ -99,14 +99,14 @@ export async function buildSite(
 		}
 	}
 	publishDist(webroot);
-	if (webroot.adapter === "apache-proxy" || webroot.adapter === "apache-cgi") {
+	if (webroot.adapter !== "node") {
 		const resolved = resolvedRoutes();
 		if (!resolved) throw new Error("Astro did not resolve the AstroHP routes");
 		console.log(
 			generateApacheConfig(
 				webroot,
 				resolved,
-				webroot.adapter === "apache-cgi" ? webroot.port : serverPort(webroot.port),
+				webroot.adapter === "apache-proxy" ? serverPort(webroot.port) : webroot.port,
 			),
 		);
 	}

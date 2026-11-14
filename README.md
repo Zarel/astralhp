@@ -53,13 +53,18 @@ astrohp build
 astrohp start
 ```
 
-`astrohp build` and `astrohp start` work with multiple webroots, and can
-start one server capable of serving multiple webroots.
+`astrohp build` and `astrohp start` work with multiple webroots (use a
+`webroots` array), and can start one server capable of serving multiple
+webroots. `astrohp dev` will need to specify the webroot in this case.
 
 ## Apache
 
-You can set `adapter` to `"apache-proxy"` or `"apache-cgi"`, to use AstroHP
-from inside Apache, which is useful for shared hosting.
+You can set `adapter` to `"apache-proxy"`, `"apache-cgi"`, or
+`"apache-static"`, to use AstroHP from inside Apache, which is useful for
+shared hosting.
+
+- `apache-static` just doesn't support dynamic pages, and will show an error
+  message if you try to use them.
 
 - `apache-proxy` is an approach where you build, put the files in the Apache
   webroot, and then run `astrohp start`. Apache will serve static files, and
@@ -242,7 +247,8 @@ AstroHP uses a few hidden cache directories:
 - `dist/.server` contains server software for dynamic pages
 - `dist` contains built versions of static pages
 
-With `webroot: '.'`, the two `.caches/` directories will be combined.
+With `webroot: '.'`, the two `.caches/` directories will be combined. With
+multiple webroots, `.astro` will be in `.caches/[webroot]/.astro`.
 
 You probably want to add `.caches/` to your `.gitignore`.
 

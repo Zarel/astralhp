@@ -1,13 +1,14 @@
 import type * as astro from "astro";
+import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
-import type { Adapter, Config } from "./config.d.ts";
+import type { Adapter, Config, WebrootConfig } from "./config.d.ts";
 
 const CONFIG_FILENAMES = ["astrohp.mts", ".astrohp.mts"] as const;
 const IGNORED_DIRECTORIES = new Set(["node_modules", ".git", ".caches"]);
 const PRIVATE_DIRECTORIES = new Set([".caches", ".server", "node_modules"]);
-const ADAPTERS = new Set<Adapter>(["node", "apache-proxy", "apache-cgi"]);
+const ADAPTERS = new Set<Adapter>(["node", "apache-proxy", "apache-cgi", "apache-static"]);
 
 export function validateConfig(value: any, filename: string): Config {
 	// note to self: if this gets too complicated later, switch to Zod
@@ -16,8 +17,24 @@ export function validateConfig(value: any, filename: string): Config {
 	}
 
 	for (const key of Object.keys(value)) {
-		if (key !== "webroot" && key !== "adapter" && key !== "port" && key !== "runtimePath") {
+		if (key !== "webroot" && key !== "webroots" && key !== "adapter" && key !== "port" && key !== "runtimePath" && key !== "prerender") {
 			throw new Error(`Unknown AstroHP configuration option: ${key}`);
+		}
+	}
+	if (value.webroots !== undefined) {
+		if (value.webroot !== undefined) throw new Error("Specify either webroot or webroots, not both");
+		if (!Array.isArray(value.webroots) || !value.webroots.length) {
+			throw new Error("AstroHP configuration option webroots must be a non-empty array");
+		}
+		for (const [index, entry] of value.webroots.entries()) {
+			const label = `${filename}: webroots[${index}]`;
+			const options = typeof entry === "string" ? { webroot: entry } : entry;
+			if (!options || typeof options !== "object" || Array.isArray(options) ||
+				typeof options.webroot !== "string" || !options.webroot) {
+				throw new Error(`${label} must be a non-empty path or an object with a non-empty webroot`);
+			}
+			if ("webroots" in options) throw new Error(`${label} cannot contain nested webroots`);
+			validateConfig(options, label);
 		}
 	}
 	if (
@@ -30,7 +47,10 @@ export function validateConfig(value: any, filename: string): Config {
 		value.adapter !== undefined &&
 		(typeof value.adapter !== "string" || !ADAPTERS.has(value.adapter as Adapter))
 	) {
-		throw new Error('AstroHP configuration option adapter must be "node", "apache-proxy", or "apache-cgi"');
+		throw new Error('AstroHP configuration option adapter must be "node", "apache-proxy", "apache-cgi", or "apache-static"');
+	}
+	if (value.prerender !== undefined && typeof value.prerender !== "boolean") {
+		throw new Error("AstroHP configuration option prerender must be a boolean");
 	}
 	if (
 		value.port !== undefined &&
@@ -61,6 +81,8 @@ export interface AstrohpResolvedRoutes {
 export interface AstrohpConfigOptions {
 	onRoutesResolved?: (resolved: AstrohpResolvedRoutes) => void;
 	entrypointRoot?: string;
+	staticOnly?: boolean;
+	prerender?: boolean;
 }
 
 function canonicalPath(filename: string): string {
@@ -90,12 +112,28 @@ export function astrohpIntegration(
 		name: "astrohp",
 		hooks: {
 			"astro:config:setup"({ injectRoute }) {
-				for (const page of pages) injectRoute(page);
+				// Set page defaults independently of the adapter's output mode.
+				// Astro still gives an explicit page export precedence over this.
+				for (const page of pages) injectRoute({ ...page, prerender: options.prerender ?? true });
 			},
 			"astro:config:done"({ config }) {
 				trailingSlash = config.trailingSlash;
 			},
 			"astro:routes:resolved"({ routes }) {
+				if (options.staticOnly) {
+					// Astro adds internal image, server-island, and fallback routes
+					// during dev and sync even for fully static sites.
+					const dynamic = routes.filter(route =>
+						route.origin !== "internal" && !route.isPrerendered &&
+						(route.type === "page" || route.type === "endpoint")
+					);
+					if (dynamic.length) {
+						throw new Error(
+							`apache-static does not support dynamic routes:\n${dynamic.map(route => route.entrypoint).join("\n")}\n` +
+							"Set prerender = true on these pages or in astrohp.mts, or choose an adapter that supports dynamic routes.",
+						);
+					}
+				}
 				if (!options.onRoutesResolved) return;
 				options.onRoutesResolved({
 					routes: routes.filter(route => entrypoints.has(canonicalEntrypoint(route.entrypoint))),
@@ -110,10 +148,12 @@ export class Webroot {
 	readonly path: string;
 	readonly configFile: string | null;
 	readonly adapter: Adapter;
+	readonly prerender: boolean;
 	readonly port: number;
 	readonly runtimePath: string | undefined;
 	readonly caches: string;
 	readonly projectCaches: string;
+	readonly isolatedCache: boolean;
 	readonly astroCache: string;
 	readonly viteCache: string;
 	readonly dist: string;
@@ -121,8 +161,9 @@ export class Webroot {
 	readonly previousDist: string;
 	readonly publicDir: string;
 
-	constructor(config: Config, configFile: string | null = null) {
-		validateConfig(config, configFile ?? "Webroot configuration");
+	constructor(config: WebrootConfig, configFile: string | null = null, isolatedCache: boolean = false) {
+		const validated = validateConfig(config, configFile ?? "Webroot configuration");
+		if (validated.webroots !== undefined) throw new Error("A Webroot represents one directory; use Webroot.search() to load webroots");
 		this.configFile = configFile === null ? null : path.resolve(configFile);
 		if (config.webroot) {
 			if (!this.configFile && !path.isAbsolute(config.webroot)) {
@@ -138,10 +179,20 @@ export class Webroot {
 			throw new Error("Webroot requires config.webroot or a config file");
 		}
 		this.adapter = config.adapter ?? "node";
+		this.prerender = config.prerender ?? true;
 		this.port = config.port ?? 4321;
 		this.runtimePath = config.runtimePath;
 		this.caches = path.join(this.path, ".caches");
+		this.isolatedCache = isolatedCache;
 		this.projectCaches = path.join(this.configFile ? path.dirname(this.configFile) : this.path, ".caches");
+		if (isolatedCache) {
+			// Use the normalized path, not the array position, so reordering or
+			// adding entries does not change existing cache identities.
+			const relative = path.relative(path.dirname(this.projectCaches), this.path).split(path.sep).join("/") || ".";
+			const hash = createHash("sha256").update(relative).digest("hex").slice(0, 16);
+			const name = path.basename(this.path).replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 40) || "root";
+			this.projectCaches = path.join(this.projectCaches, `${name}-${hash}`);
+		}
 		this.astroCache = path.join(this.projectCaches, ".astro");
 		this.viteCache = path.join(this.astroCache, "vite");
 		this.dist = path.join(this.caches, "dist");
@@ -192,7 +243,7 @@ export class Webroot {
 				`${filename} must export a configuration object named "config"`,
 			);
 		}
-		return module.config as Config;
+		return validateConfig(module.config, filename);
 	}
 
 	static async search(
@@ -211,13 +262,24 @@ export class Webroot {
 			parent = nextParent;
 		}
 
-		const webroots = await Promise.all(
-			configs.map(async filename => new Webroot(await Webroot.importConfig(filename), filename)),
-		);
+		const webroots = (await Promise.all(
+			configs.map(async filename => {
+				const { webroots, ...defaults } = await Webroot.importConfig(filename);
+				if (webroots === undefined) return [new Webroot(defaults, filename)];
+				return webroots.map(entry => new Webroot(
+					{ ...defaults, ...(typeof entry === "string" ? { webroot: entry } : entry) },
+					filename,
+					true,
+				));
+			}),
+		)).flat();
 		const webrootsByPath = new Map<string, Webroot>();
 		for (const webroot of webroots) {
 			const existing = webrootsByPath.get(webroot.path);
 			if (existing) {
+				if (existing.configFile === webroot.configFile) {
+					throw new Error(`Webroot ${webroot.path} is configured more than once in ${webroot.configFile}`);
+				}
 				throw new Error(
 					`Webroot ${webroot.path} is configured by both ${existing.configFile} and ${webroot.configFile}`,
 				);

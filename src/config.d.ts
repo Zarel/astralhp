@@ -1,6 +1,6 @@
-export type Adapter = "node" | "apache-proxy" | "apache-cgi";
+export type Adapter = "node" | "apache-proxy" | "apache-cgi" | "apache-static";
 
-export interface Config {
+export interface WebrootConfig {
 	/**
 	 * Which directory to use as AstroHP's webroot, relative to the config
 	 * file.
@@ -9,12 +9,20 @@ export interface Config {
 	 */
 	webroot?: string;
 	/**
+	 * Whether pages are rendered at build time by default. A page's
+	 * `export const prerender` overrides this setting.
+	 *
+	 * @default true
+	 */
+	prerender?: boolean;
+	/**
 	 * Which adapter to use.
 	 *
 	 * - `node` - use Astro's Node adapter server for everything
 	 * - `apache-proxy` - use Apache to serve static files, proxying Astro's
 	 *   Node server for dynamic routes
 	 * - `apache-cgi` - use Apache for static files and CGI for dynamic routes
+	 * - `apache-static` - prerender all pages for Apache; dynamic routes are errors
 	 *
 	 * @default 'node'
 	 */
@@ -34,3 +42,12 @@ export interface Config {
 	 */
 	port?: number;
 }
+
+/** Configure one webroot, or several sharing defaults with per-webroot overrides. */
+export type Config =
+	| (WebrootConfig & { webroots?: never })
+	| (Omit<WebrootConfig, "webroot"> & {
+		webroot?: never;
+		/** Paths relative to this config file, or options overriding the shared defaults. */
+		webroots: readonly (string | (WebrootConfig & { webroot: string }))[];
+	});

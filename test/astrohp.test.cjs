@@ -97,6 +97,12 @@ test("loads the compiled package from node_modules", t => {
 			'import { Database, SQL } from "astrohp/database";',
 			'const config: Config = { webroot: "/tmp" };',
 			"new Webroot(config);",
+			'const multiple: Config = { adapter: "apache-proxy", webroots: ["www", { webroot: "admin", port: 9002 }] };',
+			"void multiple;",
+			"// @ts-expect-error webroot and webroots are mutually exclusive",
+			'const conflicting: Config = { webroot: "www", webroots: ["admin"] };',
+			"// @ts-expect-error object entries must specify a webroot",
+			'const missingPath: Config = { webroots: [{ port: 9002 }] };',
 			"const database: typeof Database = Database;",
 			"SQL`SELECT ${database.name}`;",
 		].join("\n"),
@@ -584,7 +590,7 @@ test("injects index.astro at the root route", () => {
 		},
 	});
 
-	assert.deepEqual(route, page);
+	assert.deepEqual(route, { ...page, prerender: true });
 });
 
 test("scans nested and dynamic Astro pages", t => {
@@ -665,10 +671,12 @@ test("places generated files in a hidden directory inside the webroot", t => {
 		path: webroot,
 		configFile: null,
 		adapter: "node",
+		prerender: true,
 		port: 4321,
 		runtimePath: undefined,
 		caches: cache,
 		projectCaches: cache,
+		isolatedCache: false,
 		astroCache: path.join(cache, ".astro"),
 		dist: path.join(cache, "dist"),
 		nextDist: path.join(cache, "next-dist"),

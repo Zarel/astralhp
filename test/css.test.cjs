@@ -47,6 +47,7 @@ export const prerender = true;
 		path.join(root, "nested/[id].astro"),
 		`---
 import Styles from "../.components/Styles.astro";
+export const prerender = false;
 ---
 <Styles />`,
 	);

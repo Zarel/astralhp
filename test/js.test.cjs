@@ -58,6 +58,7 @@ export const prerender = true;
 		path.join(root, "live.astro"),
 		`---
 import Assets from "./.components/Assets.astro";
+export const prerender = false;
 ---
 <Assets />`,
 	);

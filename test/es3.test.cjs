@@ -83,6 +83,7 @@ import { ES3 } from "astrohp/components";
 		`---
 import Shared from "./.components/Shared.astro";
 import { ES3 } from "astrohp/components";
+export const prerender = false;
 ---
 <Shared />
 {Astro.url.searchParams.has("legacy") && <ES3 src="/scripts/conditional.ts" />}`,

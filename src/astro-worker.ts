@@ -22,7 +22,9 @@ import {
 interface SerializedWebroot {
 	path: string;
 	configFile: string | null;
+	isolatedCache: boolean;
 	adapter: Webroot["adapter"];
+	prerender: boolean;
 	port: number;
 	runtimePath?: string;
 }
@@ -37,9 +39,10 @@ function webrootFrom(data: SerializedWebroot): Webroot {
 	return new Webroot({
 		webroot: data.path,
 		adapter: data.adapter,
+		prerender: data.prerender,
 		port: data.port,
 		...(data.runtimePath === undefined ? {} : { runtimePath: data.runtimePath }),
-	}, data.configFile);
+	}, data.configFile, data.isolatedCache);
 }
 
 function outsideRootEntrypoints(
@@ -86,13 +89,16 @@ function astroConfig(
 	if (!pages.length) {
 		throw new Error(`No .astro pages found in ${webroot.path}`);
 	}
+	const staticOnly = webroot.adapter === "apache-static";
 
 	return {
 		root: webroot.projectCaches,
 		cacheDir: webroot.astroCache,
 		publicDir: webroot.publicDir,
-		output: "server",
-		adapter: webroot.adapter === "apache-cgi" ? cgiAdapter() : nodeAdapter({ mode: "middleware" }),
+		output: staticOnly ? "static" : "server",
+		...(staticOnly ? {} : {
+			adapter: webroot.adapter === "apache-cgi" ? cgiAdapter() : nodeAdapter({ mode: "middleware" }),
+		}),
 		build: {
 			client: "./",
 			server: "./.server/",
@@ -107,6 +113,8 @@ function astroConfig(
 		integrations: [astrohpIntegration(pages, {
 			...options,
 			entrypointRoot: webroot.projectCaches,
+			staticOnly,
+			prerender: webroot.prerender,
 		})],
 		vite: {
 			root: webroot.path,
