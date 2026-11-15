@@ -12,7 +12,7 @@ const { astrohpIntegration } = require("../dist/webroot.js");
 function fixture(t) {
 	const root = fs.mkdtempSync(path.resolve(__dirname, "../.astrohp-test-static-"));
 	t.after(() => fs.rmSync(root, { recursive: true, force: true }));
-	return new Webroot({ webroot: root, adapter: "apache-static", port: 0 });
+	return new Webroot({ webroot: root, port: 0 });
 }
 
 test("static Apache rules require neither a proxy port nor a CGI handler", t => {

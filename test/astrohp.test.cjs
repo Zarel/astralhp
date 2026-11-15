@@ -364,13 +364,13 @@ test("rejects both configuration names in one directory", async t => {
 	);
 });
 
-test("uses the requested directory and node adapter without configuration", async t => {
+test("uses the requested directory and apache-static adapter without configuration", async t => {
 	const webroot = fs.mkdtempSync(path.join(os.tmpdir(), "astrohp-test-"));
 	t.after(() => fs.rmSync(webroot, { recursive: true, force: true }));
 
 	assert.deepEqual(
 		await Webroot.resolve(webroot, webroot),
-		new Webroot({ webroot }),
+		new Webroot({ webroot, adapter: "apache-static" }),
 	);
 });
 
@@ -402,9 +402,9 @@ test("uses the configured port unless PORT overrides it", t => {
 });
 
 test("requires separate ports for direct node webroots", () => {
-	const alpha = new Webroot({ webroot: example });
+	const alpha = new Webroot({ webroot: example, adapter: "node" });
 	assert.equal(new AstroHPServer([alpha], { port: 0 }).webrootForRequest(undefined), alpha);
-	const beta = new Webroot({ webroot: path.dirname(example) });
+	const beta = new Webroot({ webroot: path.dirname(example), adapter: "node" });
 	assert.throws(
 		() => new AstroHPServer([alpha, beta], { port: 0 }),
 		/Node webroots sharing port 0 must use different ports/,
@@ -436,7 +436,7 @@ test("does not fall back from an unknown Apache document root", () => {
 		webroot: example,
 		adapter: "apache-proxy",
 	});
-	const node = new Webroot({ webroot: path.dirname(example) });
+	const node = new Webroot({ webroot: path.dirname(example), adapter: "node" });
 	const server = new AstroHPServer([apache, node], { port: 0 });
 
 	assert.equal(server.webrootForRequest(undefined), node);
@@ -670,7 +670,7 @@ test("places generated files in a hidden directory inside the webroot", t => {
 	assert.deepEqual({ ...new Webroot({ webroot }) }, {
 		path: webroot,
 		configFile: null,
-		adapter: "node",
+		adapter: "apache-static",
 		prerender: true,
 		port: 4321,
 		runtimePath: undefined,
@@ -954,7 +954,7 @@ test("builds the configured Apache proxy adapter", async t => {
 
 test("replaces only AstroHP's managed Apache section", t => {
 	const webroot = fs.mkdtempSync(path.join(os.tmpdir(), "astrohp-test-"));
-	const site = new Webroot({ webroot });
+	const site = new Webroot({ webroot, adapter: "apache-proxy" });
 	t.after(() => fs.rmSync(webroot, { recursive: true, force: true }));
 	const filename = path.join(webroot, ".htaccess");
 	fs.writeFileSync(
@@ -1092,7 +1092,8 @@ test("builds every discovered webroot", t => {
 	assert.equal(result.status, 0, result.stderr);
 	for (const webroot of [first, second]) {
 		assert(fs.statSync(path.join(webroot, ".caches/dist/index.html")).isFile());
-		assert(fs.statSync(path.join(webroot, ".caches/dist/.server/app.mjs")).isFile());
+		assert.equal(fs.existsSync(path.join(webroot, ".caches/dist/.server")), false);
+		assert.match(fs.readFileSync(path.join(webroot, ".htaccess"), "utf8"), /Serve built files/);
 	}
 });
 

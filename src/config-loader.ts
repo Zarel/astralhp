@@ -118,18 +118,31 @@ function configIn(directory: string): string | null {
 	return matches[0] ?? null;
 }
 
+function findConfigMarkers(directory: string, configs: string[], apacheRoots: string[]): void {
+	const config = configIn(directory);
+	if (config) {
+		configs.push(config);
+		return;
+	}
+	try {
+		if (fs.statSync(path.join(directory, ".htaccess")).isFile()) apacheRoots.push(directory);
+	} catch (error) {
+		if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+	}
+}
+
 function findChildConfigs(
 	directory: string,
 	configs: string[],
+	apacheRoots: string[],
 ): void {
-	const config = configIn(directory);
-	if (config) configs.push(config);
+	findConfigMarkers(directory, configs, apacheRoots);
 
 	const entries = fs.readdirSync(directory, { withFileTypes: true })
 		.sort((a, b) => a.name.localeCompare(b.name));
 	for (const entry of entries) {
 		if (!entry.isDirectory() || IGNORED_DIRECTORIES.has(entry.name)) continue;
-		findChildConfigs(path.join(directory, entry.name), configs);
+		findChildConfigs(path.join(directory, entry.name), configs, apacheRoots);
 	}
 }
 
@@ -161,12 +174,12 @@ async function loadConfig(filename: string): Promise<LoadedWebrootConfig[]> {
 export async function searchConfigs(directory: string = process.cwd()): Promise<LoadedWebrootConfig[]> {
 	directory = path.resolve(directory);
 	const configs: string[] = [];
-	findChildConfigs(directory, configs);
+	const apacheRoots: string[] = [];
+	findChildConfigs(directory, configs, apacheRoots);
 
 	let parent = path.dirname(directory);
 	while (parent !== directory) {
-		const config = configIn(parent);
-		if (config) configs.push(config);
+		findConfigMarkers(parent, configs, apacheRoots);
 		const nextParent = path.dirname(parent);
 		if (nextParent === parent) break;
 		parent = nextParent;
@@ -187,13 +200,23 @@ export async function searchConfigs(directory: string = process.cwd()): Promise<
 		}
 		webrootsByPath.set(webrootPath, webroot);
 	}
+	const inside = (root: string, candidate: string): boolean => {
+		const relative = path.relative(root, candidate);
+		return relative !== ".." && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative);
+	};
+	// Consider outer roots first: nested .htaccess files usually configure a
+	// subdirectory of a site, rather than a separate site. Explicit configs win.
+	for (const root of apacheRoots.sort((a, b) => a.split(path.sep).length - b.split(path.sep).length || a.localeCompare(b))) {
+		if (webroots.some(webroot => inside(webroot.config.webroot, root))) continue;
+		webroots.push({ config: { webroot: root }, configFile: null, isolatedCache: false });
+	}
 	return webroots;
 }
 
 export async function requireConfigs(directory: string = process.cwd()): Promise<LoadedWebrootConfig[]> {
 	const configs = await searchConfigs(directory);
 	if (!configs.length) {
-		throw new Error(`Could not find ${CONFIG_FILENAMES.join(" or ")}; specify a webroot directory`);
+		throw new Error(`Could not find ${CONFIG_FILENAMES.join(" or ")} or .htaccess; specify a webroot directory`);
 	}
 	return configs;
 }

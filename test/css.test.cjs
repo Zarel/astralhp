@@ -15,7 +15,7 @@ function fixture(t) {
 	const root = path.join(project, "www");
 	fs.mkdirSync(root);
 	const configFile = path.join(project, "astrohp.mts");
-	fs.writeFileSync(configFile, 'export const config = { webroot: "www" };');
+	fs.writeFileSync(configFile, 'export const config = { webroot: "www", adapter: "node" };');
 	for (const directory of ["styles", ".components", "nested", "images"]) fs.mkdirSync(path.join(root, directory));
 	fs.writeFileSync(path.join(root, "styles/plain.css"), "/* keep this */ body { margin: 0; }\n");
 	fs.writeFileSync(path.join(root, "styles/_tokens.scss"), "$color: #123456;");
@@ -51,7 +51,7 @@ export const prerender = false;
 ---
 <Styles />`,
 	);
-	return new Webroot({ webroot: "www" }, configFile);
+	return new Webroot({ webroot: "www", adapter: "node" }, configFile);
 }
 
 function stylesheetURL(html) {

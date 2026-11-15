@@ -24,7 +24,7 @@ export interface WebrootConfig {
 	 * - `apache-cgi` - use Apache for static files and CGI for dynamic routes
 	 * - `apache-static` - prerender all pages for Apache; dynamic routes are errors
 	 *
-	 * @default 'node'
+	 * @default 'apache-static'
 	 */
 	adapter?: Adapter;
 	/**

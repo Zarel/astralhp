@@ -79,7 +79,7 @@ export function astrohpIntegration(
 					if (dynamic.length) {
 						throw new Error(
 							`apache-static does not support dynamic routes:\n${dynamic.map(route => route.entrypoint).join("\n")}\n` +
-							"Set prerender = true on these pages or in astrohp.mts, or choose an adapter that supports dynamic routes.",
+							'Set prerender = true on these pages or in astrohp.mts, or set adapter to "apache-cgi", "apache-proxy", or "node" in astrohp.mts.',
 						);
 					}
 				}
@@ -127,7 +127,7 @@ export class Webroot {
 		} else {
 			throw new Error("Webroot requires config.webroot or a config file");
 		}
-		this.adapter = config.adapter ?? "node";
+		this.adapter = config.adapter ?? "apache-static";
 		this.prerender = config.prerender ?? true;
 		this.port = config.port ?? 4321;
 		this.runtimePath = config.runtimePath;

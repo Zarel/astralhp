@@ -55,8 +55,8 @@ export async function init(directory: string = process.cwd()): Promise<void> {
 	}
 
 	try {
-		console.log(`Creating ${path.join(directory, "astrohp.mts")}`);
-		console.log("Press Enter to accept a default. Press Ctrl+C to cancel.\n");
+		console.log(`AstroHP: Setting up ${directory}`);
+		console.log("Enter = accept a default. Ctrl+C = cancel anytime.\n");
 		console.log("Webroot directory can be . (uses the current directory) or nonexistent (will be created).");
 		const webroot = await ask("Webroot directory", "www", value => {
 			if (value.includes("\0")) throw new Error("Webroot path must not contain a null character.");
@@ -65,12 +65,11 @@ export async function init(directory: string = process.cwd()): Promise<void> {
 			return value;
 		});
 		console.log("\nSupported adapters:");
-		console.log("  node          Node directly serves the site");
 		console.log("  apache-static Apache serves static pages only");
 		console.log("  apache-proxy  Apache forwards dynamic requests to Node");
-		console.log("  apache-cgi    Apache runs dynamic pages through CGI\n");
-		const suggested = stat(path.resolve(directory, webroot, ".htaccess"))?.isFile() ? "apache-static" : "node";
-		const adapter = await ask("Adapter", suggested, value => {
+		console.log("  apache-cgi    Apache runs dynamic pages through CGI");
+		console.log("  node          Node directly serves the site\n");
+		const adapter = await ask("Adapter", "apache-static", value => {
 			validateConfig({ adapter: value }, "Configuration");
 			return value as Adapter;
 		});
@@ -92,12 +91,41 @@ export async function init(directory: string = process.cwd()): Promise<void> {
 			});
 			if (runtimePath) config.runtimePath = runtimePath;
 		}
-		console.log(`\n${formatConfig(config)}`);
-		if (!await ask("Write this configuration?", "yes", booleanAnswer)) throw new Cancelled();
+		const staticOnly = adapter === "apache-static";
+		const apache = adapter !== "node";
+		const root = path.resolve(directory, webroot);
+		const apacheFile = path.resolve(directory, webroot, ".htaccess");
+		const displayPath = (filename: string): string => path.relative(directory, filename) || ".";
+		console.log("\nReady. This will:");
+		console.log(`- ${stat(root) ? "use existing" : "create"} \`${displayPath(root)}\``);
+		if (apache) {
+			const existing = stat(apacheFile);
+			if (existing && !existing.isFile()) throw new Error(`Expected a file: ${apacheFile}`);
+			console.log(`- ${existing ? "use existing" : "create"} \`${displayPath(apacheFile)}\``);
+		}
+		if (!staticOnly) {
+			console.log(`- create \`astrohp.mts\`, containing:\n${formatConfig(config)}`);
+		} else {
+			console.log();
+		}
+		if (!await ask("Go?", "yes", booleanAnswer)) {
+			throw new Cancelled();
+		}
 		assertCanCreateConfig(directory);
-		fs.mkdirSync(path.resolve(directory, webroot), { recursive: true });
-		const filename = createConfig(directory, config);
-		console.log(`\nCreated ${filename}`);
+		fs.mkdirSync(root, { recursive: true });
+		if (apache) {
+			try {
+				fs.writeFileSync(apacheFile, "", { flag: "wx" });
+				console.log(`\nCreated ${apacheFile}`);
+			} catch (error) {
+				if ((error as NodeJS.ErrnoException).code !== "EEXIST" || !stat(apacheFile)?.isFile()) throw error;
+				console.log(`\nUsing existing ${apacheFile}`);
+			}
+		}
+		if (!staticOnly) {
+			const filename = createConfig(directory, config);
+			console.log(`\nCreated ${filename}`);
+		}
 	} catch (error) {
 		if (!(error instanceof Cancelled)) throw error;
 		console.log("\nCancelled. No configuration written.");

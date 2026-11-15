@@ -27,6 +27,74 @@ async function freePort() {
 	return port;
 }
 
+test("discovers .htaccess webroots in descendants and ancestors without treating nested rules as sites", async t => {
+	const project = fixture(t, {});
+	fs.rmSync(path.join(project, "astrohp.mts"));
+	for (const name of ["first", "first/private", "second", "node_modules/ignored", ".git/ignored", ".caches/ignored"]) {
+		fs.mkdirSync(path.join(project, name), { recursive: true });
+		fs.writeFileSync(path.join(project, name, ".htaccess"), "");
+	}
+	// A directory with this name is not a marker, and directory symlinks are not traversed.
+	fs.mkdirSync(path.join(project, "not-a-site/.htaccess"), { recursive: true });
+	fs.symlinkSync(project, path.join(project, "loop"));
+	const sites = await Webroot.requireAll(project);
+	assert.deepEqual(sites.map(site => site.path), ["first", "second"].map(name => path.join(project, name)));
+	for (const site of sites) {
+		assert.equal(site.adapter, "apache-static");
+		assert.equal(site.configFile, null);
+		assert.equal(site.prerender, true);
+	}
+	assert.deepEqual(await Webroot.requireOne(path.join(project, "first/private")), sites[0]);
+	assert.deepEqual(await Webroot.resolve("first", project), sites[0]);
+	await assert.rejects(Webroot.requireOne(project), /Found multiple AstroHP webroots/);
+});
+
+test("explicit configurations take precedence over .htaccess markers", async t => {
+	const project = fixture(t, {
+		adapter: "apache-proxy", port: 9001,
+		webroots: ["first", { webroot: "second", adapter: "node" }],
+	});
+	for (const name of [".", "first", "first/private", "second", "third"]) {
+		fs.mkdirSync(path.join(project, name), { recursive: true });
+		fs.writeFileSync(path.join(project, name, ".htaccess"), "");
+	}
+	const sites = await Webroot.requireAll(project);
+	assert.deepEqual(sites.map(site => [path.relative(project, site.path), site.adapter]), [
+		["first", "apache-proxy"], ["second", "node"], ["third", "apache-static"],
+	]);
+	assert.equal(sites[0].port, 9001);
+	assert.equal(sites[0].configFile, path.join(project, "astrohp.mts"));
+	assert.equal(sites[2].configFile, null);
+	assert.deepEqual(await Webroot.resolve(path.join(project, "first")), sites[0]);
+});
+
+test("an empty .htaccess is sufficient for CLI discovery, builds, and local development", async t => {
+	const project = fixture(t, {});
+	fs.rmSync(path.join(project, "astrohp.mts"));
+	const root = path.join(project, "www");
+	fs.mkdirSync(root);
+	fs.writeFileSync(path.join(root, ".htaccess"), "");
+	fs.writeFileSync(path.join(root, "index.astro"), "<h1>Zero config</h1>");
+	const listed = spawnSync(process.execPath, [cli], { cwd: project, encoding: "utf8" });
+	assert.equal(listed.status, 0, listed.stderr);
+	assert.equal(listed.stdout.trim(), "AstroHP webroots:\n  www");
+	const built = spawnSync(process.execPath, [cli, "build"], { cwd: project, encoding: "utf8" });
+	assert.equal(built.status, 0, built.stderr);
+	assert.match(fs.readFileSync(path.join(root, ".caches/dist/index.html"), "utf8"), /Zero config/);
+	assert.match(fs.readFileSync(path.join(root, ".htaccess"), "utf8"), /BEGIN ASTROHP/);
+	assert.equal(fs.existsSync(path.join(root, ".caches/dist/.server")), false);
+	const site = await Webroot.requireOne(project);
+	const port = await freePort();
+	const worker = await dev(site, { port });
+	try {
+		const response = await fetch(`http://localhost:${port}/`);
+		assert.equal(response.status, 200);
+		assert.match(await response.text(), /Zero config/);
+	} finally {
+		await worker.close();
+	}
+});
+
 test("expands paths and overrides, resolves selected webroots, and keeps stable isolated caches", async t => {
 	const project = fixture(t, {
 		adapter: "apache-proxy", port: 9001, runtimePath: process.execPath, prerender: false,
@@ -54,6 +122,7 @@ test("expands paths and overrides, resolves selected webroots, and keeps stable 
 	fs.writeFileSync(path.join(project, ".astrohp.mts"),
 		'export const config = { webroots: ["./second/www", "first/../first/www", "third"] };');
 	const reordered = await Webroot.search(project);
+	assert.deepEqual(reordered.map(site => site.adapter), ["apache-static", "apache-static", "apache-static"]);
 	assert.equal(reordered[0].projectCaches, sites[1].projectCaches);
 	assert.equal(reordered[1].projectCaches, sites[0].projectCaches);
 });

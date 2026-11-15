@@ -21,7 +21,7 @@ function fixture(t) {
 	t.after(() => fs.rmSync(root, { recursive: true, force: true }));
 	fs.mkdirSync(path.join(root, "scripts"));
 	fs.writeFileSync(path.join(root, "scripts/legacy.ts"), "const value: number = 1;");
-	return new Webroot({ webroot: root });
+	return new Webroot({ webroot: root, adapter: "node" });
 }
 
 test("collects imported ES3 tags, including aliases, namespaces, and conditional references", t => {
