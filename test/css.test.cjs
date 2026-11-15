@@ -127,6 +127,84 @@ import { CSS } from "astrohp/components";
 	await assert.rejects(build(site), /Asset output collision/);
 });
 
+test("CSS inline embeds plain CSS and SCSS with asset-relative URLs on static and dynamic pages", async t => {
+	const site = fixture(t);
+	fs.appendFileSync(
+		path.join(site.path, "styles/plain.css"),
+		`
+@import "./other.css";
+.icon { --image: url('../images/icon.svg'); background: image-set("../images/icon.svg" 1x); }
+.text::after { content: "</StYlE><script>bad()</script>"; }
+`,
+	);
+	fs.writeFileSync(
+		path.join(site.path, ".components/Styles.astro"),
+		`---
+import { CSS } from "astrohp/components";
+const attributes = { inline: true, "data-plain": "yes" };
+---
+<CSS src="../styles/main.scss" inline media="screen" />
+<CSS {...attributes} src="../styles/plain.css" />
+<CSS src="../styles/plain.css" inline={false} data-external="yes" />`,
+	);
+	await build(site);
+	const check = html => {
+		assert.match(html, /<style[^>]*media="screen"[^>]*>/);
+		assert.match(html, /<style[^>]*data-plain="yes"[^>]*>/);
+		assert.match(html, /color:#123456/);
+		assert.match(html, /url\(["']?\/images\/icon.svg/);
+		assert.match(html, /@import "\/styles\/other.css"/);
+		assert.match(html, /image-set\("\/images\/icon.svg"/);
+		assert.doesNotMatch(html, /sourceMappingURL|\sinline(?:=|\s|>)/i);
+		assert.match(html, /\\3c \/StYlE>/);
+		assert.equal((html.match(/<style\b/g) ?? []).length, 2);
+		assert.equal((html.match(/<\/style>/gi) ?? []).length, 2);
+		assert.equal((html.match(/<link\b/g) ?? []).length, 1);
+		assert.match(html, /data-external="yes"/);
+	};
+	check(fs.readFileSync(path.join(site.dist, "index.html"), "utf8"));
+	// Inline content must be part of the server build, not read from source per request.
+	fs.rmSync(path.join(site.path, "styles"), { recursive: true });
+	const server = new AstroHPServer([site], { port: 0 });
+	await server.listen();
+	try {
+		const response = await fetch(`http://127.0.0.1:${server.server.address().port}/nested/test`);
+		assert.equal(response.status, 200);
+		check(await response.text());
+	} finally {
+		await server.close();
+	}
+});
+
+test("CSS development refreshes inline plain CSS and SCSS dependencies", async t => {
+	const site = fixture(t);
+	const filename = path.join(site.path, ".components/Styles.astro");
+	fs.writeFileSync(filename, fs.readFileSync(filename, "utf8").replaceAll(" src=", " inline src="));
+	const reservation = net.createServer();
+	await new Promise(resolve => reservation.listen(0, "127.0.0.1", resolve));
+	const port = reservation.address().port;
+	await new Promise(resolve => reservation.close(resolve));
+	const worker = await dev(site, { port });
+	try {
+		const url = `http://localhost:${port}/nested/test`;
+		const before = await (await fetch(url)).text();
+		assert.match(before, /color:#123456/);
+		assert.match(before, /margin: 0/);
+		fs.writeFileSync(path.join(site.path, "styles/plain.css"), "body { margin: 9px; }");
+		fs.writeFileSync(path.join(site.path, "styles/_tokens.scss"), "$color: #654321;");
+		let after = before;
+		const deadline = Date.now() + 15000;
+		while ((!after.includes("margin: 9px") || !after.includes("color:#654321")) && Date.now() < deadline) {
+			await new Promise(resolve => setTimeout(resolve, 100));
+			after = await (await fetch(url)).text();
+		}
+		assert.match(after, /margin: 9px/);
+		assert.match(after, /color:#654321/);
+	} finally {
+		await worker.close();
+	}
+});
+
 test("CSS development rebuilds SCSS when a forwarded partial changes", async t => {
 	const site = fixture(t);
 	const reservation = net.createServer();

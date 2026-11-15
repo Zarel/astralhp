@@ -140,8 +140,79 @@ import { JS, ES3 } from "astrohp/components";
 	await assert.rejects(build(site), /JS and ES3 both produce/);
 });
 
+test("JS inline embeds the bundle and imported CSS while preserving lazy imports and script text", async t => {
+	const site = fixture(t);
+	fs.appendFileSync(
+		path.join(site.path, "scripts/app.ts"),
+		`
+export const text = "</ScRiPt><script>bad()</script><!--<script>";
+export const location = import.meta.url;
+`,
+	);
+	fs.writeFileSync(
+		path.join(site.path, ".components/Assets.astro"),
+		`---
+import { JS } from "astrohp/components";
+const inline = !Astro.url.searchParams.has("external");
+---
+<JS src="../scripts/app.ts" inline={inline} nonce="test-nonce" data-test="inline" />`,
+	);
+	fs.mkdirSync(path.join(site.path, "nested"));
+	fs.writeFileSync(
+		path.join(site.path, "nested/live.astro"),
+		`---
+import Assets from "../.components/Assets.astro";
+export const prerender = false;
+---
+<Assets />`,
+	);
+	await build(site);
+	const check = async html => {
+		const script = html.match(/<script\b([^>]*)>([\s\S]*?)<\/script>/);
+		assert(script, html);
+		assert.match(script[1], /type="module"/);
+		assert.match(script[1], /nonce="test-nonce"/);
+		assert.doesNotMatch(script[1], /\bsrc=|\binline=/);
+		assert.match(script[2], /dependency-one/);
+		assert.match(script[2], /import\("\/scripts\/_chunks\/lazy-/);
+		assert.doesNotMatch(script[2], /sourceMappingURL|<\/script|<!--/i);
+		assert.match(html, /<style[^>]*>body\{/);
+		assert.doesNotMatch(html, /<link\b/);
+		globalThis.document = { baseURI: "https://example.test/nested/live" };
+		try {
+			const module = await import(`data:text/javascript;base64,${Buffer.from(script[2]).toString("base64")}`);
+			assert.equal(await module.answer(), "dependency-one");
+			assert.equal(module.text, "</ScRiPt><script>bad()</script><!--<script>");
+			assert.equal(module.location, "https://example.test/scripts/app.js");
+		} finally {
+			delete globalThis.document;
+		}
+	};
+	await check(fs.readFileSync(path.join(site.dist, "index.html"), "utf8"));
+	fs.rmSync(path.join(site.path, "scripts"), { recursive: true });
+	const server = new AstroHPServer([site], { port: 0 });
+	await server.listen();
+	try {
+		const base = `http://127.0.0.1:${server.server.address().port}`;
+		const html = await (await fetch(`${base}/nested/live`)).text();
+		await check(html);
+		assert.equal((html.match(/<script\b/g) ?? []).length, 1);
+		const lazyURL = html.match(/import\("([^\"]+_chunks\/lazy-[^\"]+)"/)[1];
+		const lazy = await fetch(base + lazyURL);
+		assert.equal(lazy.status, 200);
+		assert.match(await lazy.text(), /lazy-one/);
+		const external = await (await fetch(`${base}/nested/live?external`)).text();
+		assert.match(external, /<link\b/);
+		assert(bundleURL(external));
+		assert.doesNotMatch(external, /dependency-one/);
+	} finally {
+		await server.close();
+	}
+});
+
 test("JS development serves bundles at their original paths and rebuilds imported dependencies", async t => {
 	const site = fixture(t);
+	fs.appendFileSync(path.join(site.path, ".components/Assets.astro"), '\n<Script src="../scripts/app.ts" inline />');
 	const reservation = net.createServer();
 	await new Promise(resolve => reservation.listen(0, "127.0.0.1", resolve));
 	const port = reservation.address().port;
@@ -151,7 +222,9 @@ test("JS development serves bundles at their original paths and rebuilds importe
 		const base = `http://localhost:${port}`;
 		const response = await fetch(`${base}/live`);
 		assert.equal(response.status, 200);
-		const before = bundleURL(await response.text());
+		const initial = await response.text();
+		assert.match(initial, /dependency-one/);
+		const before = bundleURL(initial);
 		assert.match(await (await fetch(`${base}${before}`)).text(), /dependency-one/);
 		fs.writeFileSync(path.join(site.path, "scripts/dependency.js"), 'export const message = "dev-updated";');
 		let after = before;
@@ -161,6 +234,7 @@ test("JS development serves bundles at their original paths and rebuilds importe
 			after = bundleURL(await (await fetch(`${base}/live`)).text());
 		}
 		assert.notEqual(after, before);
+		assert.match(await (await fetch(`${base}/live`)).text(), /dev-updated/);
 		assert.match(await (await fetch(`${base}${after}`)).text(), /dev-updated/);
 		assert(!fs.existsSync(path.join(site.dist, "scripts/unused.js")));
 	} finally {

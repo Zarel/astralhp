@@ -14,6 +14,7 @@ export interface AssetReference {
 	end: number;
 	insert: number;
 	pathname: string;
+	mayInline: boolean;
 }
 
 export interface AssetReferences {
@@ -99,6 +100,7 @@ export function assetReferences(
 					end: offset(src!.value.end),
 					insert: offset(node.name.end),
 					pathname: url.pathname,
+					mayInline: attributes.some(attr => attr.type === "JSXSpreadAttribute" || attr.name?.name === "inline"),
 				});
 				output.overwrite(offset(src!.value.start), offset(src!.value.end), `{${JSON.stringify(url.pathname)}}`);
 			}

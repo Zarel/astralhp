@@ -9,6 +9,7 @@ import type * as vite from "vite";
 import { assetReferences } from "./asset-references.js";
 import { scriptOutputPath } from "./babel.js";
 import { contentHash } from "./cachebuster.js";
+import { inlineCSS, inlineJS } from "./inline-assets.js";
 import type { Webroot } from "./webroot.js";
 
 // Resolve the toolchain from Astro, including when it has a nested Vite install.
@@ -20,6 +21,7 @@ interface Bundle {
 	styles: string[];
 	files: Map<string, string | Uint8Array>;
 	dependencies: Set<string>;
+	content: string;
 }
 
 function publicURL(filename: string): string {
@@ -58,6 +60,16 @@ export class AssetBundles {
 			throw new Error(`Asset output collision: ${owner} and ${source} both produce ${entry}`);
 		}
 		this.owners.set(entry, source);
+		if (source.endsWith(".css")) {
+			const content = fs.readFileSync(source, "utf8");
+			return {
+				src: `${publicURL(entry)}?v=${contentHash(content)}`,
+				styles: [],
+				files: new Map(),
+				dependencies: new Set([source]),
+				content,
+			};
+		}
 		if (scss) return this.compileScss(source, entry);
 		const directory = path.dirname(entry);
 		const dependencies = new Set<string>([source]);
@@ -111,7 +123,13 @@ export class AssetBundles {
 				for (const file of css ?? []) styles.push(publicURL(path.join(directory, file)));
 			}
 		}
-		return { src: `${publicURL(entry)}?v=${hash.digest("hex").slice(0, 16)}`, styles, files, dependencies };
+		return {
+			src: `${publicURL(entry)}?v=${hash.digest("hex").slice(0, 16)}`,
+			styles,
+			files,
+			dependencies,
+			content: String(files.get(entry)),
+		};
 	}
 
 	private async compileScss(source: string, entry: string): Promise<Bundle> {
@@ -132,6 +150,7 @@ export class AssetBundles {
 			styles: [],
 			files,
 			dependencies: new Set(result.loadedUrls.filter(url => url.protocol === "file:").map(url => fileURLToPath(url))),
+			content: css,
 		};
 	}
 
@@ -207,13 +226,31 @@ export class AssetBundles {
 						const bundle = await this.bundle(reference.source);
 						output.overwrite(reference.start, reference.end, `{${JSON.stringify(bundle.src)}}`);
 						output.appendLeft(reference.insert, ` __astrohpStyles={${JSON.stringify(bundle.styles)}}`);
+						if (reference.mayInline) {
+							const pathname = bundle.src.split("?")[0]!;
+							const content = inlineJS(bundle.content, pathname);
+							const inlineStyles = bundle.styles.map(href => {
+								const css = bundle.files.get(decodeURIComponent(href.slice(1)).split("/").join(path.sep))!;
+								return inlineCSS(Buffer.from(css).toString(), href);
+							});
+							output.appendLeft(
+								reference.insert,
+								` __astrohpContent={${JSON.stringify(content)}} __astrohpInlineStyles={${
+									JSON.stringify(inlineStyles)
+								}}`,
+							);
+						}
 						server?.watcher.add([...bundle.dependencies]);
 					}
 					for (const reference of styles) {
 						output.overwrite(reference.start, reference.end, `{${JSON.stringify(reference.pathname)}}`);
-						if (reference.source.endsWith(".scss")) {
+						if (reference.source.endsWith(".scss") || reference.mayInline) {
 							const bundle = await this.bundle(reference.source);
 							output.appendLeft(reference.insert, ` __astrohpHref={${JSON.stringify(bundle.src)}}`);
+							if (reference.mayInline) {
+								const content = inlineCSS(bundle.content, bundle.src.split("?")[0]!);
+								output.appendLeft(reference.insert, ` __astrohpContent={${JSON.stringify(content)}}`);
+							}
 							server?.watcher.add([...bundle.dependencies]);
 						} else {
 							const entry = path.relative(this.webroot.path, reference.source);
