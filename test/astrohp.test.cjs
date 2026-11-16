@@ -10,7 +10,7 @@ const test = require("node:test");
 const { pathToFileURL } = require("node:url");
 
 const { build: buildAstroHP } = require("astrohp");
-const { DatabaseTable, PGDatabase, SQL, SQLStatement, SQLiteDatabase } = require("astrohp/database");
+const { DatabaseTable, MySQLDatabase, PGDatabase, SQL, SQLStatement, SQLiteDatabase } = require("astrohp/database");
 
 const {
 	compileScripts,
@@ -74,6 +74,15 @@ test("loads the compiled package from node_modules", t => {
 			"const missingPath: Config = { webroot: [{ port: 9002 }] };",
 			"const database: typeof Database = Database;",
 			"SQL`SELECT ${database.name}`;",
+			'SQL`SELECT ${1} ${SQL.raw("AS result")}`;',
+			"// @ts-expect-error SQL requires a tagged template",
+			'SQL("SELECT 1");',
+			"// @ts-expect-error plain arrays are not tagged templates",
+			'SQL(["SELECT ", ""], 1);',
+			"// @ts-expect-error raw SQL accepts only a string",
+			"SQL.raw(1);",
+			"// @ts-expect-error raw SQL does not accept interpolation arguments",
+			'SQL.raw("SELECT ?", 1);',
 		].join("\n"),
 	);
 	const typecheck = spawnSync(
@@ -158,11 +167,44 @@ test("preserves SQL template segments and nested statements", () => {
 	assert.deepEqual(fragments.sql, ["WHERE first = ", " AND second = ", " AND third = ", ""]);
 	assert.deepEqual(fragments.values, [1, 2, 3]);
 
-	assert.deepEqual(SQL("SELECT 1"), new SQLStatement(["SELECT 1"], []));
-	assert.deepEqual(SQL(["SELECT ", ""], 1), new SQLStatement(["SELECT ", ""], [1]));
-	const appended = SQL("").append(1).appendRaw(" + ").append(2);
+	const appended = SQL``.append(1).appendRaw(" + ").append(2);
 	assert.deepEqual(appended.sql, ["", " + ", ""]);
 	assert.deepEqual(appended.values, [1, 2]);
+});
+
+test("requires explicit raw SQL and preserves parameters around raw fragments", () => {
+	assert.throws(() => SQL("SELECT 1"), /SQL must be used as a template tag/);
+	assert.throws(() => SQL(["SELECT ", ""], 1), /SQL must be used as a template tag/);
+	assert.throws(() => SQL.raw(1), /SQL.raw\(\) requires exactly one string/);
+	assert.throws(() => SQL.raw("SELECT ?", 1), /SQL.raw\(\) requires exactly one string/);
+	assert.throws(() => SQL.raw`SELECT ${1}`, /SQL.raw\(\) requires exactly one string/);
+	assert.deepEqual(SQL.raw("SELECT 1"), new SQLStatement(["SELECT 1"], []));
+	assert.deepEqual(SQL.raw(""), SQL``);
+	const value = "'; DROP TABLE entries; --";
+	const statement = SQL`SELECT ${value} ${SQL.raw("AS result")} WHERE ${1} = ${1}`;
+	assert.deepEqual(statement.sql, ["SELECT ", " AS result WHERE ", " = ", ""]);
+	assert.deepEqual(statement.values, [value, 1, 1]);
+});
+
+test("rejects null identifiers while preserving null values in every database driver", () => {
+	for (const Driver of [MySQLDatabase, PGDatabase, SQLiteDatabase]) {
+		// SQL resolution does not need an open database connection.
+		const database = Object.create(Driver.prototype);
+		for (const quote of ['"', "`"]) {
+			assert.throws(
+				() => database._resolveSQL(new SQLStatement([`SELECT * FROM ${quote}`, quote], [null])),
+				/SQL identifiers cannot be null/,
+			);
+		}
+		assert.deepEqual(database._resolveSQL(SQL`SELECT ${null}`), [
+			Driver === PGDatabase ? "SELECT $1" : "SELECT ?",
+			[null],
+		]);
+		assert.deepEqual(database._resolveSQL(SQL`SELECT "${"null"}"`), [
+			`SELECT ${database.escapeId("null")}`,
+			[],
+		]);
+	}
 });
 
 test("generates portable PostgreSQL table mutations", () => {

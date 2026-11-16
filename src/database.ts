@@ -156,13 +156,32 @@ export class SQLStatement implements SQL {
  *
  * * `` SQL`INSERT INTO table ("${['a', 'b']}") VALUES (${[1, 2]})` ``
  *   * `` `INSERT INTO table ("a", "b") VALUES (1, 2)` ``
+ *
+ * SQL statements can be nested:
+ *
+ * * `` SQL`SELECT * FR${SQL`OM table`}` ``
+ *   * `` `SELECT * FROM table` ``
+ *
+ * SQL.raw() creates an unescaped SQL fragment. You should probably never use it:
+ *
+ * * `` secondPart = SQL.raw('OM table'); SQL`SELECT * FR${secondPart}` ``
+ *   * `` `SELECT * FROM table` ``
  */
 function createSQL(
-	strings: TemplateStringsArray | string[] | string,
+	strings: TemplateStringsArray,
 	...values: SQLValue[]
 ): SQLStatement {
-	if (typeof strings === "string") strings = [strings];
+	if (!Array.isArray(strings) || !Array.isArray(strings.raw)) {
+		throw new TypeError("SQL must be used as a template tag; use SQL.raw() for unescaped SQL");
+	}
 	return new SQLStatement(strings, values);
+}
+
+function rawSQL(sql: string): SQLStatement {
+	if (typeof sql !== "string" || arguments.length !== 1) {
+		throw new TypeError("SQL.raw() requires exactly one string");
+	}
+	return new SQLStatement([sql], []);
 }
 
 function isSQL(value: unknown): value is SQL {
@@ -170,11 +189,13 @@ function isSQL(value: unknown): value is SQL {
 }
 
 interface SQLTag {
-	(strings: TemplateStringsArray | string[] | string, ...values: SQLValue[]): SQLStatement;
+	(strings: TemplateStringsArray, ...values: SQLValue[]): SQLStatement;
+	/** Creates an unescaped SQL fragment. Only use with trusted SQL. */
+	raw(sql: string): SQLStatement;
 	isSQL(value: unknown): value is SQL;
 }
 
-export const SQL: SQLTag = Object.assign(createSQL, { isSQL });
+export const SQL: SQLTag = Object.assign(createSQL, { raw: rawSQL, isSQL });
 
 export interface ResultRow {
 	[k: string]: BasicSQLValue;
@@ -428,6 +449,7 @@ export class MySQLDatabase extends Database<mysql.Pool, mysql.OkPacket> {
 			const value = query.values[i]!;
 			const nextSQL = query.sql[i + 1]!;
 			if (nextSQL.startsWith("`") || nextSQL.startsWith('"')) {
+				if (value === null) throw new Error("SQL identifiers cannot be null");
 				sql = sql.slice(0, -1) + this.escapeId(`${value as any}`) + nextSQL.slice(1);
 			} else {
 				sql += "?" + nextSQL;
@@ -479,6 +501,7 @@ export class PGDatabase extends Database<pg.Pool, { affectedRows: number | null 
 			const value = query.values[i]!;
 			const nextSQL = query.sql[i + 1]!;
 			if (nextSQL.startsWith("`") || nextSQL.startsWith('"')) {
+				if (value === null) throw new Error("SQL identifiers cannot be null");
 				sql = sql.slice(0, -1) + this.escapeId(`${value as any}`) + nextSQL.slice(1);
 			} else {
 				paramCount++;
@@ -529,6 +552,7 @@ export class SQLiteDatabase extends Database<import("node:sqlite").DatabaseSync,
 			const value = query.values[i]!;
 			const nextSQL = query.sql[i + 1]!;
 			if (nextSQL.startsWith("`") || nextSQL.startsWith('"')) {
+				if (value === null) throw new Error("SQL identifiers cannot be null");
 				sql = sql.slice(0, -1) + this.escapeId(`${value as any}`) + nextSQL.slice(1);
 			} else {
 				sql += "?" + nextSQL;
