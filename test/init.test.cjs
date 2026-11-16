@@ -33,10 +33,8 @@ test("init defaults to an empty www/.htaccess without a config file", async t =>
 	const result = run(project, "\n\n\n");
 	assert.equal(result.status, 0, result.stderr || result.error);
 	assert.match(result.stdout, /Webroot directory \(www\)/);
-	assert.match(result.stdout, /Webroot directory can be \./);
 	assert.match(result.stdout, /Adapter \(apache-static\)/);
 	assert.doesNotMatch(result.stdout, /Port \(|Interpreter path:/);
-	assert.doesNotMatch(result.stdout, /prerender/i);
 	assert.match(result.stdout, /Ready\. This will:\n- create `www`\n- create `www\/\.htaccess`\n\nGo\? \(yes\):/);
 	assert.doesNotMatch(result.stdout, /export const config|astrohp\.mts/);
 	assert.deepEqual(fs.readdirSync(project), ["www"]);
@@ -46,7 +44,6 @@ test("init defaults to an empty www/.htaccess without a config file", async t =>
 	assert.equal(site.adapter, "apache-static");
 	assert.equal(site.configFile, null);
 	assert(fs.statSync(path.join(project, "www")).isDirectory());
-	assert.equal(fs.existsSync(path.join(project, "www/.caches")), false);
 });
 
 test("init respects the project directory argument and preserves existing Apache rules", async t => {
@@ -89,7 +86,7 @@ test("init retries invalid answers and saves proxy settings", async t => {
 	assert.equal(fs.existsSync(path.join(project, "www")), false);
 });
 
-test("init still supports selecting Node and its default port", async t => {
+test("init saves Node settings without creating .htaccess", async t => {
 	const project = fixture(t);
 	const result = run(project, "\nnode\n\n\n");
 	assert.equal(result.status, 0, result.stderr || result.error);

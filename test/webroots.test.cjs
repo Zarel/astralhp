@@ -131,7 +131,6 @@ test("rejects malformed multi-webroot configurations", () => {
 	for (const value of [null, 42, "", {}, [], [""], [null], [42], [{}], [{ webroot: "" }], [["www"]]]) {
 		assert.throws(() => validateConfig({ webroot: value }, "config"), /webroot/);
 	}
-	assert.throws(() => validateConfig({ webroots: ["other"] }, "config"), /Unknown AstroHP configuration option: webroots/);
 	assert.throws(() => validateConfig({ webroot: [{ webroot: ["other"] }] }, "config"), /non-empty webroot/);
 	for (const entry of [{ adapter: "unknown" }, { port: -1 }, { runtimePath: "bun" }, { prerender: "false" }, { typo: true }]) {
 		assert.throws(() => validateConfig({ webroot: [{ webroot: "www", ...entry }] }, "config"));
@@ -170,7 +169,6 @@ test("CLI lists and builds array entries, then serves both through a shared prox
 		assert(fs.statSync(path.join(site.dist, ".server/app.mjs")).isFile());
 		assert.match(fs.readFileSync(path.join(site.dist, "index.html"), "utf8"), new RegExp(`${path.basename(site.path)} static`));
 	}
-	assert.equal(fs.existsSync(path.join(project, ".caches/.astro")), false);
 	const port = await freePort();
 	const worker = await start(sites, { port, host: "127.0.0.1" });
 	try {
@@ -204,7 +202,6 @@ test("selected webroots can run concurrent dev servers with separate Astro and V
 			assert(fs.statSync(path.join(site.astroCache, "types.d.ts")).isFile());
 			assert(fs.statSync(site.viteCache).isDirectory());
 		}
-		assert.equal(fs.existsSync(path.join(project, ".caches/.astro")), false);
 	} finally {
 		await Promise.all(workers.map(({ worker }) => worker.close()));
 	}

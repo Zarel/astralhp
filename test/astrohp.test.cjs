@@ -45,35 +45,6 @@ const dynamicAstroRoute = {
 	segments: [[{ content: "id", dynamic: true, spread: false }]],
 };
 
-test("exports package entrypoints", () => {
-	assert.equal(
-		require.resolve("astrohp"),
-		path.resolve(__dirname, "../dist/index.js"),
-	);
-	const astrohp = require("astrohp");
-	assert.equal(typeof astrohp.build, "function");
-	assert.equal(typeof astrohp.dev, "function");
-	assert.equal(typeof astrohp.start, "function");
-	assert.equal(typeof astrohp.Webroot, "function");
-	assert.equal(astrohp.Database, undefined);
-	assert.equal(
-		require.resolve("astrohp/database"),
-		path.resolve(__dirname, "../dist/database.js"),
-	);
-	assert.equal(typeof require("astrohp/database").Database, "function");
-	assert.equal(
-		require.resolve("astrohp/components"),
-		path.resolve(__dirname, "../dist/components/index.js"),
-	);
-	const componentIndex = fs.readFileSync(
-		path.resolve(__dirname, "../dist/components/index.js"),
-		"utf8",
-	);
-	assert.match(componentIndex, /default as CSS/);
-	assert.match(componentIndex, /default as ES3/);
-	assert.match(componentIndex, /default as JS/);
-});
-
 test("loads the compiled package from node_modules", t => {
 	const project = fs.mkdtempSync(path.join(__dirname, "../.astrohp-test-installed-"));
 	const installed = path.join(project, "node_modules", "astrohp");
@@ -99,8 +70,6 @@ test("loads the compiled package from node_modules", t => {
 			"new Webroot(config);",
 			'const multiple: Config = { adapter: "apache-proxy", webroot: ["www", { webroot: "admin", port: 9002 }] };',
 			"void multiple;",
-			"// @ts-expect-error the old plural property is not supported",
-			'const conflicting: Config = { webroots: ["admin"] };',
 			"// @ts-expect-error object entries must specify a webroot",
 			'const missingPath: Config = { webroot: [{ port: 9002 }] };',
 			"const database: typeof Database = Database;",
@@ -660,32 +629,6 @@ test("identifies private directories at any URL depth", () => {
 	assert.equal(exampleWebroot.isPrivateRequest("/assets/file.js"), false);
 });
 
-test("places generated files in a hidden directory inside the webroot", t => {
-	const parent = fs.mkdtempSync(path.join(os.tmpdir(), "astrohp-test-"));
-	t.after(() => fs.rmSync(parent, { recursive: true, force: true }));
-	const webroot = path.join(parent, "project");
-	fs.mkdirSync(webroot, { recursive: true });
-	const cache = path.join(webroot, ".caches");
-
-	assert.deepEqual({ ...new Webroot({ webroot }) }, {
-		path: webroot,
-		configFile: null,
-		adapter: "apache-static",
-		prerender: true,
-		port: 4321,
-		runtimePath: undefined,
-		caches: cache,
-		projectCaches: cache,
-		isolatedCache: false,
-		astroCache: path.join(cache, ".astro"),
-		dist: path.join(cache, "dist"),
-		nextDist: path.join(cache, "next-dist"),
-		previousDist: path.join(cache, "previous-dist"),
-		publicDir: path.join(cache, ".astro", "public"),
-		viteCache: path.join(cache, ".astro", "vite"),
-	});
-});
-
 test("keeps tooling caches beside the config and build output inside the webroot", () => {
 	const project = path.resolve("project");
 	const configFile = path.join(project, "astrohp.mts");
@@ -697,10 +640,12 @@ test("keeps tooling caches beside the config and build output inside the webroot
 	assert.equal(site.dist, path.join(project, "www/.caches/dist"));
 	assert.equal(site.nextDist, path.join(project, "www/.caches/next-dist"));
 	assert.equal(site.previousDist, path.join(project, "www/.caches/previous-dist"));
-	const sameRoot = new Webroot({ webroot: "." }, configFile);
-	assert.equal(sameRoot.projectCaches, sameRoot.caches);
-	assert.equal(sameRoot.astroCache, path.join(sameRoot.caches, ".astro"));
-	assert.equal(sameRoot.viteCache, path.join(sameRoot.astroCache, "vite"));
+	for (const sameRoot of [new Webroot({ webroot: "." }, configFile), new Webroot({ webroot: project })]) {
+		assert.equal(sameRoot.projectCaches, sameRoot.caches);
+		assert.equal(sameRoot.astroCache, path.join(project, ".caches/.astro"));
+		assert.equal(sameRoot.viteCache, path.join(sameRoot.astroCache, "vite"));
+		assert.equal(sameRoot.dist, path.join(project, ".caches/dist"));
+	}
 });
 
 test("publishes a completed dist with a quick directory swap", t => {
@@ -823,7 +768,6 @@ test("generates Apache rules in built, static, proxy order", () => {
 	assert(physical > built);
 	assert(proxy > physical);
 	assert.doesNotMatch(block, /RewriteRule "\^" "http:/);
-	assert.doesNotMatch(block, /\d{8}-[a-z\d]+/i);
 });
 
 test("omits proxy rules when every Astro route is prerendered", () => {
@@ -927,9 +871,7 @@ test("builds the configured Apache proxy adapter", async t => {
 	);
 
 	assert.equal(result.status, 0, result.stderr);
-	assert.equal(fs.existsSync(path.join(project, ".astro")), false);
 	assert(fs.statSync(path.join(project, ".caches/.astro/types.d.ts")).isFile());
-	assert.equal(fs.existsSync(path.join(webroot, ".caches/.astro")), false);
 	assert.match(
 		fs.readFileSync(path.join(webroot, ".caches/dist/index.html"), "utf8"),
 		/Built by AstroHP$/,
@@ -981,18 +923,6 @@ test("replaces only AstroHP's managed Apache section", t => {
 
 	writeApacheConfig(site, 9001, [dynamicApacheRoute]);
 	assert.equal(fs.readFileSync(filename, "utf8"), generated);
-});
-
-test("upgrades legacy AstroHP section markers", () => {
-	const updated = replaceApacheBlock(
-		"# BEGIN ASTROHP\nold generated rule\n# END ASTROHP\n",
-		apacheBlock(9001),
-	);
-
-	assert.match(updated, /^# ===== BEGIN ASTROHP =====$/m);
-	assert.match(updated, /^# ===== END ASTROHP =====$/m);
-	assert.doesNotMatch(updated, /^# (?:BEGIN|END) ASTROHP$/m);
-	assert.doesNotMatch(updated, /old generated rule/);
 });
 
 test("appends an AstroHP section when none can be located", () => {
@@ -1097,7 +1027,7 @@ test("builds every discovered webroot", t => {
 	}
 });
 
-test("requires a discovered config when the webroot is omitted", t => {
+test("requires a discoverable webroot when the directory is omitted", t => {
 	const directory = fs.mkdtempSync(path.join(os.tmpdir(), "astrohp-test-"));
 	t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
 

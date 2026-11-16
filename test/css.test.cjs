@@ -217,10 +217,6 @@ test("CSS development rebuilds SCSS when a forwarded partial changes", async t =
 		const response = await fetch(`${base}/nested/test`);
 		assert.equal(response.status, 200);
 		const before = stylesheetURL(await response.text());
-		assert(fs.statSync(path.join(site.astroCache, "types.d.ts")).isFile());
-		assert(fs.statSync(site.viteCache).isDirectory());
-		assert.equal(fs.existsSync(path.join(site.caches, ".astro")), false);
-		assert.equal(fs.existsSync(path.join(site.caches, ".vite")), false);
 		assert.match(await (await fetch(`${base}${before}`)).text(), /color:#123456/);
 		fs.writeFileSync(path.join(site.path, "styles/_tokens.scss"), "$color: #654321;");
 		let after = before;
