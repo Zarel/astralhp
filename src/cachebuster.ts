@@ -1,5 +1,5 @@
-import fs from "node:fs";
 import { createHash } from "node:crypto";
+import fs from "node:fs";
 import type { Webroot } from "./webroot.js";
 
 export function contentHash(contents: string | Uint8Array): string {

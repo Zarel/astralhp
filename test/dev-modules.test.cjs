@@ -12,8 +12,10 @@ test("serves transformed TypeScript modules alongside classic compiled scripts",
 	const root = fs.mkdtempSync(path.resolve(__dirname, "../.astrohp-test-modules-"));
 	const site = new Webroot({ webroot: root });
 	fs.writeFileSync(path.join(root, "answer.ts"), "export const answer: number = 42;");
-	fs.writeFileSync(path.join(root, "app.ts"),
-		'import { answer } from "./answer"; const value: number = answer; console.log(value);');
+	fs.writeFileSync(
+		path.join(root, "app.ts"),
+		'import { answer } from "./answer"; const value: number = answer; console.log(value);',
+	);
 	fs.mkdirSync(site.dist, { recursive: true });
 	fs.writeFileSync(path.join(site.dist, "app.js"), "console.log(answer);");
 	const server = await createServer({

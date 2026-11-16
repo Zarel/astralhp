@@ -25,23 +25,29 @@ test("static Apache rules require neither a proxy port nor a CGI handler", t => 
 	assert.match(block, /Remove .html from URLs/);
 	assert.doesNotMatch(block, /ProxyPass|ProxyPreserveHost|RequestHeader|ExecCGI|cgi-script|127\.0\.0\.1/);
 	assert.equal(fs.readFileSync(writeApacheConfig(site), "utf8"), `${block}\n`);
-	assert.throws(() => apacheBlock(0, [{ pattern: "/live", regex: "^live$" }], "apache-static"), /apache-static.*\/live/);
+	assert.throws(
+		() => apacheBlock(0, [{ pattern: "/live", regex: "^live$" }], "apache-static"), /apache-static.*\/live/,
+	);
 });
 
 test("apache-static builds default and parameterized static pages with compiled assets", async t => {
 	const site = fixture(t);
-	fs.writeFileSync(path.join(site.path, "index.astro"), `---
+	fs.writeFileSync(
+		path.join(site.path, "index.astro"), `---
 import { CSS, JS, ES3 } from "astrohp/components";
 ---
 <h1>Static home</h1>
-<CSS src="/style.scss" /><JS src="/app.ts" /><ES3 src="/legacy.ts" />`);
+<CSS src="/style.scss" /><JS src="/app.ts" /><ES3 src="/legacy.ts" />`,
+	);
 	fs.writeFileSync(path.join(site.path, "app.ts"), 'console.log("modern");');
 	fs.writeFileSync(path.join(site.path, "legacy.ts"), 'const legacy: string = "legacy";');
 	fs.writeFileSync(path.join(site.path, "style.scss"), "$color: red; body { color: $color; }");
-	fs.writeFileSync(path.join(site.path, "[id].astro"), `---
+	fs.writeFileSync(
+		path.join(site.path, "[id].astro"), `---
 export function getStaticPaths() { return [{ params: { id: "about" } }]; }
 ---
-<p>{Astro.params.id}</p>`);
+<p>{Astro.params.id}</p>`,
+	);
 	await build(site);
 	const html = fs.readFileSync(path.join(site.dist, "index.html"), "utf8");
 	assert.match(html, /Static home/);
@@ -63,12 +69,22 @@ export function getStaticPaths() { return [{ params: { id: "about" } }]; }
 
 test("apache-static also rejects injected dynamic endpoints", () => {
 	const integration = astrohpIntegration([], { staticOnly: true });
-	assert.doesNotThrow(() => integration.hooks["astro:routes:resolved"]({ routes: [{
-		type: "endpoint", origin: "internal", isPrerendered: false, entrypoint: "/_image",
-	}] }));
-	assert.throws(() => integration.hooks["astro:routes:resolved"]({ routes: [{
-		type: "endpoint", origin: "project", isPrerendered: false, entrypoint: "/injected/api.ts",
-	}] }), /apache-static does not support dynamic routes:[\s\S]*api\.ts/);
+	assert.doesNotThrow(() => integration.hooks["astro:routes:resolved"]({
+		routes: [{
+			type: "endpoint",
+			origin: "internal",
+			isPrerendered: false,
+			entrypoint: "/_image",
+		}],
+	}));
+	assert.throws(() => integration.hooks["astro:routes:resolved"]({
+		routes: [{
+			type: "endpoint",
+			origin: "project",
+			isPrerendered: false,
+			entrypoint: "/injected/api.ts",
+		}],
+	}), /apache-static does not support dynamic routes:[\s\S]*api\.ts/);
 });
 
 test("apache-static supports local dev and rejects dynamic pages at startup", async t => {

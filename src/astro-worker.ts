@@ -4,12 +4,12 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type * as vite from "vite";
 
+import type { ScriptCache } from "./babel.js";
 import { buildSite } from "./build.js";
 import { AssetBundles } from "./bundles.js";
 import { cgiAdapter } from "./cgi-adapter.js";
 import { type DevServerOptions, startDev } from "./dev-server.js";
 import { es3Plugin } from "./es3.js";
-import type { ScriptCache } from "./babel.js";
 import { type AstroHPServer, type LiveServerOptions, serverPort, startLive } from "./live-server.js";
 import {
 	type AstrohpConfigOptions,
@@ -36,13 +36,17 @@ interface WorkerRequest {
 }
 
 function webrootFrom(data: SerializedWebroot): Webroot {
-	return new Webroot({
-		webroot: data.path,
-		adapter: data.adapter,
-		prerender: data.prerender,
-		port: data.port,
-		...(data.runtimePath === undefined ? {} : { runtimePath: data.runtimePath }),
-	}, data.configFile, data.isolatedCache);
+	return new Webroot(
+		{
+			webroot: data.path,
+			adapter: data.adapter,
+			prerender: data.prerender,
+			port: data.port,
+			...(data.runtimePath === undefined ? {} : { runtimePath: data.runtimePath }),
+		},
+		data.configFile,
+		data.isolatedCache,
+	);
 }
 
 function outsideRootEntrypoints(

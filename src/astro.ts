@@ -28,8 +28,8 @@ interface SerializedError {
 }
 
 type WorkerMessage =
-	| { type: "ready"; result?: unknown }
-	| { type: "error"; error: SerializedError };
+	{ type: "ready"; result?: unknown } |
+	{ type: "error"; error: SerializedError };
 
 const WORKER_ENTRYPOINT = fileURLToPath(
 	new URL("./astro-worker.js", import.meta.url),

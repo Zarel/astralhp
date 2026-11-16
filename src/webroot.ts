@@ -79,7 +79,7 @@ export function astrohpIntegration(
 					if (dynamic.length) {
 						throw new Error(
 							`apache-static does not support dynamic routes:\n${dynamic.map(route => route.entrypoint).join("\n")}\n` +
-							'Set prerender = true on these pages or in astrohp.mts, or set adapter to "apache-cgi", "apache-proxy", or "node" in astrohp.mts.',
+								'Set prerender = true on these pages or in astrohp.mts, or set adapter to "apache-cgi", "apache-proxy", or "node" in astrohp.mts.',
 						);
 					}
 				}
@@ -112,7 +112,9 @@ export class Webroot {
 
 	constructor(config: WebrootConfig, configFile: string | null = null, isolatedCache: boolean = false) {
 		const validated = validateConfig(config, configFile ?? "Webroot configuration");
-		if (Array.isArray(validated.webroot)) throw new Error("A Webroot represents one directory; use Webroot.search() to load webroots");
+		if (Array.isArray(validated.webroot)) {
+			throw new Error("A Webroot represents one directory; use Webroot.search() to load webroots");
+		}
 		this.configFile = configFile === null ? null : path.resolve(configFile);
 		if (config.webroot) {
 			if (!this.configFile && !path.isAbsolute(config.webroot)) {

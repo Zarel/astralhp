@@ -102,7 +102,9 @@ export const prerender = true;
 	}
 	assert(!fs.existsSync(path.join(site.dist, "scripts/unused.js")));
 	assert(!fs.existsSync(path.join(site.dist, "index.html")));
-	assert.match(fs.readFileSync(path.join(site.dist, "about.html"), "utf8"), /src="\/scripts\/static.js\?v=[a-f0-9]{16}"/);
+	assert.match(
+		fs.readFileSync(path.join(site.dist, "about.html"), "utf8"), /src="\/scripts\/static.js\?v=[a-f0-9]{16}"/,
+	);
 	const originalURL = scriptURL(site, "static");
 	assert(fs.readFileSync(path.join(site.dist, "about.html"), "utf8").includes(`src="${originalURL}"`));
 	// Dynamic pages use the compiled hash without requiring the TypeScript source.

@@ -2,7 +2,11 @@
 	"useTabs": true,
 	"typescript": {
 		"operatorPosition": "sameLine",
-		"quoteStyle": "preferDouble"
+		"quoteStyle": "preferDouble",
+		"arguments.linePerArgument": false,
+		"arrayExpression.linePerElement": false,
+		"parameters.linePerParameter": false,
+		"conditionalExpression.linePerExpression": false
 	},
 	"json": {
 	},
@@ -15,9 +19,9 @@
 		"**/*-lock.json"
 	],
 	"plugins": [
-		"https://plugins.dprint.dev/typescript-0.96.1.wasm",
-		"https://plugins.dprint.dev/json-0.23.0.wasm",
-		"https://plugins.dprint.dev/markdown-0.22.1.wasm",
-		"https://plugins.dprint.dev/g-plane/markup_fmt-v0.27.3.wasm"
+		"npm:@dprint/typescript@0.101.0",
+		"npm:@dprint/json@0.26.0",
+		"npm:@dprint/markdown@0.29.0",
+		"npm:dprint-plugin-markup@0.28.0"
 	]
 }

@@ -51,7 +51,8 @@ test("discovers .htaccess webroots in descendants and ancestors without treating
 
 test("explicit configurations take precedence over .htaccess markers", async t => {
 	const project = fixture(t, {
-		adapter: "apache-proxy", port: 9001,
+		adapter: "apache-proxy",
+		port: 9001,
 		webroot: ["first", { webroot: "second", adapter: "node" }],
 	});
 	for (const name of [".", "first", "first/private", "second", "third"]) {
@@ -97,7 +98,10 @@ test("an empty .htaccess is sufficient for CLI discovery, builds, and local deve
 
 test("expands paths and overrides, resolves selected webroots, and keeps stable isolated caches", async t => {
 	const project = fixture(t, {
-		adapter: "apache-proxy", port: 9001, runtimePath: process.execPath, prerender: false,
+		adapter: "apache-proxy",
+		port: 9001,
+		runtimePath: process.execPath,
+		prerender: false,
 		webroot: ["first/www", { webroot: "second/www", adapter: "apache-cgi", port: 9002, prerender: true }],
 	});
 	for (const directory of ["first/www", "second/www"]) fs.mkdirSync(path.join(project, directory), { recursive: true });
@@ -119,8 +123,10 @@ test("expands paths and overrides, resolves selected webroots, and keeps stable 
 	await assert.rejects(Webroot.requireOne(project), /Found multiple AstroHP webroots/);
 	// A second config avoids module-import caching while using the same project directory.
 	fs.rmSync(path.join(project, "astrohp.mts"));
-	fs.writeFileSync(path.join(project, ".astrohp.mts"),
-		'export const config = { webroot: ["./second/www", "first/../first/www", "third"] };');
+	fs.writeFileSync(
+		path.join(project, ".astrohp.mts"),
+		'export const config = { webroot: ["./second/www", "first/../first/www", "third"] };',
+	);
 	const reordered = await Webroot.search(project);
 	assert.deepEqual(reordered.map(site => site.adapter), ["apache-static", "apache-static", "apache-static"]);
 	assert.equal(reordered[0].projectCaches, sites[1].projectCaches);
@@ -132,7 +138,9 @@ test("rejects malformed multi-webroot configurations", () => {
 		assert.throws(() => validateConfig({ webroot: value }, "config"), /webroot/);
 	}
 	assert.throws(() => validateConfig({ webroot: [{ webroot: ["other"] }] }, "config"), /non-empty webroot/);
-	for (const entry of [{ adapter: "unknown" }, { port: -1 }, { runtimePath: "bun" }, { prerender: "false" }, { typo: true }]) {
+	for (const entry of [
+		{ adapter: "unknown" }, { port: -1 }, { runtimePath: "bun" }, { prerender: "false" }, { typo: true },
+	]) {
 		assert.throws(() => validateConfig({ webroot: [{ webroot: "www", ...entry }] }, "config"));
 	}
 	assert.throws(() => new Webroot({ webroot: ["www"] }, "/tmp/astrohp.mts"), /represents one directory/);
@@ -152,8 +160,12 @@ test("CLI lists and builds array entries, then serves both through a shared prox
 	const project = fixture(t, { adapter: "apache-proxy", webroot: ["first", { webroot: "second" }] });
 	for (const name of ["first", "second"]) {
 		fs.mkdirSync(path.join(project, name));
-		fs.writeFileSync(path.join(project, name, "index.astro"), `---\nexport const prerender = true;\n---\n${name} static`);
-		fs.writeFileSync(path.join(project, name, "live.astro"), `---\nexport const prerender = false;\n---\n${name} dynamic`);
+		fs.writeFileSync(
+			path.join(project, name, "index.astro"), `---\nexport const prerender = true;\n---\n${name} static`,
+		);
+		fs.writeFileSync(
+			path.join(project, name, "live.astro"), `---\nexport const prerender = false;\n---\n${name} dynamic`,
+		);
 	}
 	const listed = spawnSync(process.execPath, [cli], { cwd: project, encoding: "utf8" });
 	assert.equal(listed.status, 0, listed.stderr);
@@ -167,13 +179,17 @@ test("CLI lists and builds array entries, then serves both through a shared prox
 	for (const site of sites) {
 		assert(fs.statSync(path.join(site.astroCache, "types.d.ts")).isFile());
 		assert(fs.statSync(path.join(site.dist, ".server/app.mjs")).isFile());
-		assert.match(fs.readFileSync(path.join(site.dist, "index.html"), "utf8"), new RegExp(`${path.basename(site.path)} static`));
+		assert.match(
+			fs.readFileSync(path.join(site.dist, "index.html"), "utf8"), new RegExp(`${path.basename(site.path)} static`),
+		);
 	}
 	const port = await freePort();
 	const worker = await start(sites, { port, host: "127.0.0.1" });
 	try {
 		for (const site of sites) {
-			const response = await fetch(`http://127.0.0.1:${port}/live`, { headers: { "X-AstroHP-Document-Root": site.path } });
+			const response = await fetch(`http://127.0.0.1:${port}/live`, {
+				headers: { "X-AstroHP-Document-Root": site.path },
+			});
 			assert.equal(response.status, 200);
 			assert.match(await response.text(), new RegExp(`${path.basename(site.path)} dynamic`));
 		}

@@ -44,12 +44,12 @@ export interface SQL {
 	values: BasicSQLValue[];
 }
 export type SQLValue =
-	| BasicSQLValue
-	| SQL
-	| SQL[]
-	| PartialOrSQL<SQLRow>
-	| BasicSQLValue[]
-	| undefined;
+	BasicSQLValue |
+	SQL |
+	SQL[] |
+	PartialOrSQL<SQLRow> |
+	BasicSQLValue[] |
+	undefined;
 
 export class SQLStatement implements SQL {
 	readonly __isSQLStatement = true as const;
@@ -300,8 +300,7 @@ export class DatabaseTable<Row, DB extends Database<any, any>> {
 	): (strings: TemplateStringsArray, ...rest: SQLValue[]) => Promise<OkPacketOf<DB>> {
 		if (this.db.type === "sqlite") {
 			// sqlite usually doesn't support UPDATE ... LIMIT 1
-			return (strings, ...rest) =>
-				this.queryExec()`UPDATE "${this.name}" SET ${partialRow as any}
+			return (strings, ...rest) => this.queryExec()`UPDATE "${this.name}" SET ${partialRow as any}
 				WHERE rowid = (
 					SELECT rowid FROM "${this.name}" ${new SQLStatement(strings, rest)} LIMIT 1
 				)`;
@@ -319,8 +318,7 @@ export class DatabaseTable<Row, DB extends Database<any, any>> {
 	deleteOne(): (strings: TemplateStringsArray, ...rest: SQLValue[]) => Promise<OkPacketOf<DB>> {
 		if (this.db.type === "sqlite") {
 			// sqlite usually doesn't support DELETE ... LIMIT 1
-			return (strings, ...rest) =>
-				this.queryExec()`DELETE FROM "${this.name}"
+			return (strings, ...rest) => this.queryExec()`DELETE FROM "${this.name}"
 				WHERE rowid = (
 					SELECT rowid FROM "${this.name}" ${new SQLStatement(strings, rest)} LIMIT 1
 				)`;

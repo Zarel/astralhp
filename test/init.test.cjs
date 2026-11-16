@@ -20,7 +20,10 @@ function fixture(t) {
 
 function run(project, input, args = []) {
 	return spawnSync(process.execPath, [cli, "init", ...args], {
-		cwd: project, input, encoding: "utf8", timeout: 10000,
+		cwd: project,
+		input,
+		encoding: "utf8",
+		timeout: 10000,
 	});
 }
 
@@ -102,11 +105,15 @@ test("init prompts for CGI interpreter paths and allows the PATH default", async
 		const result = run(project, `\napache-cgi\n${answers}yes\n`);
 		assert.equal(result.status, 0, result.stderr || result.error);
 		assert.doesNotMatch(result.stdout, /Port \(/);
-		assert.match(result.stdout, /Ready\. This will:\n- create `www`\n- create `www\/\.htaccess`\n- create `astrohp\.mts`, containing:/);
+		assert.match(
+			result.stdout,
+			/Ready\. This will:\n- create `www`\n- create `www\/\.htaccess`\n- create `astrohp\.mts`, containing:/,
+		);
 		assert.equal(fs.readFileSync(path.join(project, "www/.htaccess"), "utf8"), "");
 		if (runtimePath) assert.match(result.stdout, /runtimePath must be an absolute path/);
 		assert.deepEqual(await readConfig(project), {
-			webroot: "www", adapter: "apache-cgi",
+			webroot: "www",
+			adapter: "apache-cgi",
 			...(runtimePath ? { runtimePath } : {}),
 		});
 	}

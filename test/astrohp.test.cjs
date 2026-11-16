@@ -71,7 +71,7 @@ test("loads the compiled package from node_modules", t => {
 			'const multiple: Config = { adapter: "apache-proxy", webroot: ["www", { webroot: "admin", port: 9002 }] };',
 			"void multiple;",
 			"// @ts-expect-error object entries must specify a webroot",
-			'const missingPath: Config = { webroot: [{ port: 9002 }] };',
+			"const missingPath: Config = { webroot: [{ port: 9002 }] };",
 			"const database: typeof Database = Database;",
 			"SQL`SELECT ${database.name}`;",
 		].join("\n"),

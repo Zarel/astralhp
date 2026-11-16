@@ -53,8 +53,10 @@ export function validateConfig(value: any, filename: string): Config {
 		for (const [index, entry] of value.webroot.entries()) {
 			const label = `${filename}: webroot[${index}]`;
 			const options = typeof entry === "string" ? { webroot: entry } : entry;
-			if (!options || typeof options !== "object" || Array.isArray(options) ||
-				typeof options.webroot !== "string" || !options.webroot) {
+			if (
+				!options || typeof options !== "object" || Array.isArray(options) ||
+				typeof options.webroot !== "string" || !options.webroot
+			) {
 				throw new Error(`${label} must be a non-empty path or an object with a non-empty webroot`);
 			}
 			validateConfig(options, label);
@@ -69,7 +71,9 @@ export function validateConfig(value: any, filename: string): Config {
 		value.adapter !== undefined &&
 		(typeof value.adapter !== "string" || !ADAPTERS.has(value.adapter as Adapter))
 	) {
-		throw new Error('AstroHP configuration option adapter must be "node", "apache-proxy", "apache-cgi", or "apache-static"');
+		throw new Error(
+			'AstroHP configuration option adapter must be "node", "apache-proxy", "apache-cgi", or "apache-static"',
+		);
 	}
 	if (value.prerender !== undefined && typeof value.prerender !== "boolean") {
 		throw new Error("AstroHP configuration option prerender must be a boolean");
@@ -204,7 +208,9 @@ export async function searchConfigs(directory: string = process.cwd()): Promise<
 	};
 	// Consider outer roots first: nested .htaccess files usually configure a
 	// subdirectory of a site, rather than a separate site. Explicit configs win.
-	for (const root of apacheRoots.sort((a, b) => a.split(path.sep).length - b.split(path.sep).length || a.localeCompare(b))) {
+	for (
+		const root of apacheRoots.sort((a, b) => a.split(path.sep).length - b.split(path.sep).length || a.localeCompare(b))
+	) {
 		if (webroots.some(webroot => inside(webroot.config.webroot, root))) continue;
 		webroots.push({ config: { webroot: root }, configFile: null, isolatedCache: false });
 	}

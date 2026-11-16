@@ -44,10 +44,12 @@ export interface WebrootConfig {
 }
 
 /** Configure one webroot, or several sharing defaults with per-webroot overrides. */
-export type Config = WebrootConfig | (Omit<WebrootConfig, "webroot"> & {
-	/**
-	 * Paths relative to this config file, or per-webroot overrides.
-	 * Entries inherit the top-level settings.
-	 */
-	webroot: readonly (string | (WebrootConfig & { webroot: string }))[];
-});
+export type Config =
+	WebrootConfig |
+	(Omit<WebrootConfig, "webroot"> & {
+		/**
+		 * Paths relative to this config file, or per-webroot overrides.
+		 * Entries inherit the top-level settings.
+		 */
+		webroot: readonly (string | (WebrootConfig & { webroot: string }))[];
+	});
