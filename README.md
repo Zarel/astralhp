@@ -1,39 +1,90 @@
-# AstroHP
+# AstroHP: Hypertext Preprocessor
 
-AstroHP is intended to make Astro work more like Apache+PHP, with a webroot
-containing `.astro` pages and static files. It's written to work even on
-many shared hosts.
+Hey. Remember how easy it was to make websites with PHP? You'd upload
+some files to a shared host and it would just run the PHP files and
+statically serve the others.
 
-To run a dev server with `example` as the web root:
+AstroHP lets you do that, but with [Astro](https://astro.build/) instead.
+It can even run alongside PHP, so you can migrate a site one page at a time.
 
-```sh
-astrohp dev example
-```
+## Getting started
 
-Files starting with `.astro` are rendered by Astro. Other files are served
-statically.
-
-To build and run a live server:
+Start with:
 
 ```sh
-astrohp build example
-astrohp start example
+npx astrohp init
 ```
 
-The build writes generated Astro files to `example/.caches/dist/`. The live
-server serves those generated files alongside static files read directly from
-the webroot. Dynamic pages are handled by Astro's Node adapter middleware from
-`example/.caches/dist/.server/`. It never copies the webroot's static files.
+This will ask you some questions to get you started. The webroot (defaulting
+to `www`) is the directory that Apache serves - for instance, `www/about.astro`
+will become `https://example.com/about`.
 
-The live server listens on `127.0.0.1:4321` by default. Set the `HOST` or
-`PORT` environment variables to override either value.
+The adapter you choose in init determines how you'll deploy:
+
+- `apache-static` (the default) just doesn't support dynamic pages, and will
+  show an error message if you try to use them.
+
+- `apache-proxy` is an approach where you build, put the files in the Apache
+  webroot, and then run `npx astrohp start`. Apache will serve static files,
+  and then proxy dynamic pages to AstroHP. It's quite performant.
+
+- `apache-cgi` is an approach where you build, put the files in the Apache
+  webroot, and that's it. It's slower, but may be more suitable for shared
+  hosts that don't let you run a persistent server.
+
+- `node` means you don't use Apache at all, and just serve the site directly
+  from Node.
+
+Once you're done with init, put some files in your webroot. For instance,
+`www/index.astro` with:
+
+```html
+<h1>Hello, world!</h1>
+```
+
+For a fuller example, look at [`example/`](example/).
+
+You can test the server by using
+
+```sh
+npx astrohp dev
+```
+
+To deploy, you'll need to run the build script.
+
+```sh
+npx astrohp build
+```
+
+Ideally, you do this on your live server, the one that's running Apache.
+But you could also copy your webroot directory over to your host.
+Make sure to include `.htaccess` and `.caches/dist/`. Note that if you
+have any dynamic pages with NPM package dependencies, those will need to
+be installed on the server as well.
+
+Then, if you're using `apache-proxy` or `node`, you'll also need to start
+the server:
+
+```sh
+npx astrohp start
+```
+
+This server listens on `127.0.0.1:4321` by default. The port can be changed
+in the `astrohp.mts` config file.
+
+## `.astro` files
+
+AstroHP uses [the same `.astro` files as Astro](https://docs.astro.build/en/basics/astro-pages/#astro-pages).
+
+The main difference is that AstroHP doesn't enforce the directory layout Astro
+does; instead, it uses file extensions to distinguish between `src/pages/` and
+`public/`.
 
 ## Configuration
 
-Run `astrohp init` for interactive setup.
-
-While AstroHP can work without a config file, it prefers to have `.astrohp.mts`
-in the webroot, or `astrohp.mts` in a parent directory of the webroot:
+AstroHP does not need a config file in `apache-static` mode (an empty
+`.htaccess` file marks a directory as a webroot). Otherwise, it needs an
+`astrohp.mts` file in the project root, which looks like this:
 
 ```ts
 export const config: import("astrohp").Config = {
@@ -43,47 +94,35 @@ export const config: import("astrohp").Config = {
 };
 ```
 
-In most text editors, you can ctrl+click or cmd+click on "Config" to see
-possible config options. If yours doesn't support that, see
-`src/config.d.ts` for options.
+See [`src/config.d.ts`](src/config.d.ts) for config documentation.
 
-With a config file in the working directory, commands can omit the directory:
+One config file can be used for multiple webroots. `webroot` can be
+an array.
 
-```sh
-astrohp dev
-astrohp build
-astrohp start
-```
+In this case, you'll need to pass a webroot to `npx astrohp dev <webroot>`.
 
-`astrohp build` and `astrohp start` work with multiple webroots (use a
-`webroots` array), and can start one server capable of serving multiple
-webroots. `astrohp dev` will need to specify the webroot in this case.
+`npx astrohp build` and `npx astrohp start` can also accept a webroot, but by
+default they will build and serve all webroots simultaneously.
 
 ## Apache
 
-You can set `adapter` to `"apache-proxy"`, `"apache-cgi"`, or
-`"apache-static"`, to use AstroHP from inside Apache, which is useful for
-shared hosting.
+Your Apache setup requires:
 
-- `apache-static` just doesn't support dynamic pages, and will show an error
-  message if you try to use them.
+- Apache 2.4.53 or newer
+- `mod_rewrite`
+- `.htaccess` support (`FileInfo` overrides)
+- The webroot to be the Apache `DocumentRoot`
+- If using `apache-proxy`: `mod_proxy`, `mod_proxy_http`, and `mod_headers`.
+- either `FollowSymLinks` or `SymLinksIfOwnerMatch`
 
-- `apache-proxy` is an approach where you build, put the files in the Apache
-  webroot, and then run `astrohp start`. Apache will serve static files, and
-  then proxy dynamic pages to AstroHP. It's quite performant.
+(These are all default settings except `.htaccess` support, which is usually
+enabled by shared hosts.)
 
-- `apache-cgi` is an approach where you build, put the files in the Apache
-  webroot, and that's it. It's slower, but may be more suitable for shared
-  hosts that don't let you run a persistent server.
+### `.htaccess`
 
-Build with:
-
-```sh
-astrohp build example
-```
-
-The generated block is marked like this, and will be created if it doesn't
-exist:
+When targeting Apache, AstroHP will reserve a section of `.htaccess` for its
+own use. The generated block is marked like this, and will be created if it
+doesn't exist:
 
 ```apache
 # ===== BEGIN ASTROHP =====
@@ -97,25 +136,19 @@ AstroHP replaces only this block and preserves all configuration outside it.
 You can read the block to see what it does (deny access to `.caches`, support
 leaving off `.html`, etc).
 
-The configured `port` is used both when generating the proxy configuration and
-starting AstroHP. Apache sends its document root in a private request header so
-a shared listener can select the correct webroot, and preserves the original
-hostname so Astro sees the public URL. A `PORT` environment variable overrides
-the configured port for both commands; when starting multiple `apache-proxy`
-webroots, this places all of them on one shared listener:
+When using `apache-proxy`, the configured `port` is used both when generating
+the proxy configuration and starting AstroHP.
+
+With multiple webroots, Apache sends its document root in a private request
+header so a shared listener can select the correct webroot, and preserves the
+original hostname so Astro sees the public URL. A `PORT` environment variable
+overrides the configured port for both commands; when starting multiple
+`apache-proxy` webroots, this places all of them on one shared listener:
 
 ```sh
-PORT=9001 astrohp build example
-PORT=9001 astrohp start example
+PORT=9001 npx astrohp build
+PORT=9001 npx astrohp start
 ```
-
-The `.htaccess` expects the webroot to be the Apache `DocumentRoot`, Apache
-2.4.53 or newer, and `mod_rewrite`. Dynamic pages additionally require
-`mod_proxy`, `mod_proxy_http`, and `mod_headers`. The directory must allow
-`FileInfo` overrides and either `FollowSymLinks` or `SymLinksIfOwnerMatch`.
-
-(These are all default settings except `FileInfo`, which is the one that allows
-`.htaccess` files in the first place, which is usually enabled by shared hosts.)
 
 ### CGI on Apache
 
@@ -152,8 +185,9 @@ The host needs to support:
 
 AstroHP supports Astro's usual ways to include CSS and JS, but if you would
 prefer a more PHP-style approach, we offer `<CSS>` and `<JS>` components
-that cachebust an asset while leaving it as unmodified as possible, and
-in the same location.
+that keep the source file's URL path, changing the extension when needed,
+and add a cachebuster. `<CSS>` serves plain CSS unchanged or compiles SCSS;
+`<JS>` bundles JavaScript or TypeScript and its imports for modern browsers.
 
 ```astro
 ---
@@ -167,8 +201,8 @@ import { CSS, JS } from "astrohp/components";
 `<script src>`. Both add a cachebuster based on hashed contents:
 
 ```html
-<link rel="stylesheet" href="/style.css?v=loyw3v28">
-<script type="module" src="/js/app.js?v=loyw3v28" defer></script>
+<link rel="stylesheet" href="/style.css?v=0123456789abcdef">
+<script type="module" src="/js/app.js?v=0123456789abcdef" defer></script>
 ```
 
 The source can be absolute (relative to the webroot) or relative to the Astro
@@ -190,7 +224,15 @@ For a `.ts` or `.tsx` source, `<JS>` changes the rendered extension to `.js`:
 ```
 
 ```html
-<script type="module" src="/script.js?v=loyw3v28"></script>
+<script type="module" src="/script.js?v=0123456789abcdef"></script>
+```
+
+Add `inline` to put the compiled contents directly into a `<style>` or
+`<script type="module">`:
+
+```astro
+<CSS src="/style.scss" inline />
+<JS src="/js/app.ts" inline />
 ```
 
 ## ES3 and Babel
@@ -227,6 +269,11 @@ If you do care about targeting ancient browsers, keep in mind:
 - We don't polyfill Map/Set because we have no use for them, either
 
 ## Cache directories
+
+The build writes generated Astro files to `example/.caches/dist/`. The live
+server serves those generated files alongside static files read directly from
+the webroot. Dynamic pages are handled by Astro's Node adapter middleware from
+`example/.caches/dist/.server/`. It never copies the webroot's static files.
 
 AstroHP uses a few hidden cache directories:
 
