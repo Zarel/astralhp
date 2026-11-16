@@ -44,7 +44,7 @@
 	"scripts": {
 		"prebuild": "node scripts/package-assets.mjs clean",
 		"build": "tsc -p tsconfig.build.json && node scripts/package-assets.mjs copy && npm run check:astro",
-		"check:astro": "astro-check -- -- --tsconfig tsconfig.astro.json",
+		"check:astro": "astro-check --tsconfig tsconfig.astro.json --minimumSeverity warning --minimumFailingSeverity warning",
 		"format": "dprint fmt",
 		"format:check": "dprint check",
 		"prepare": "npm run build",

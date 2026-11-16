@@ -1,6 +1,5 @@
 import MagicString from "magic-string";
 import fs from "node:fs";
-import path from "node:path";
 import type * as vite from "vite";
 import { assetReferences } from "./asset-references.js";
 import { compileScript, prepareScript, type ScriptCache, scriptOutputPath } from "./babel.js";

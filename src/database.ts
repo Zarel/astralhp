@@ -432,7 +432,7 @@ export class DatabaseTable<Row, DB extends Database<any, any>> {
 	}
 }
 
-export class MySQLDatabase extends Database<mysql.Pool, mysql.OkPacket> {
+export class MySQLDatabase extends Database<mysql.Pool, mysql.ResultSetHeader> {
 	override type = "mysql" as const;
 	constructor(config: mysql.PoolOptions & { prefix?: string }) {
 		const prefix = config.prefix || "";
@@ -475,7 +475,7 @@ export class MySQLDatabase extends Database<mysql.Pool, mysql.OkPacket> {
 			});
 		});
 	}
-	override _queryExec(sql: string, values: BasicSQLValue[]): Promise<mysql.OkPacket> {
+	override _queryExec(sql: string, values: BasicSQLValue[]): Promise<mysql.ResultSetHeader> {
 		return this._query(sql, values);
 	}
 	override escapeId(id: string): string {
