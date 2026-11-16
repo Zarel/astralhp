@@ -5,16 +5,16 @@ const fs = require("node:fs");
 const net = require("node:net");
 const path = require("node:path");
 const test = require("node:test");
-const { build, dev, Webroot } = require("astrohp");
+const { build, dev, Webroot } = require("astralhp");
 const { assetReferences } = require("../dist/asset-references.js");
-const { AstroHPServer } = require("../dist/live-server.js");
+const { AstralHPServer } = require("../dist/live-server.js");
 
 function fixture(t) {
-	const project = fs.mkdtempSync(path.resolve(__dirname, "../.astrohp-test-css-"));
+	const project = fs.mkdtempSync(path.resolve(__dirname, "../.astralhp-test-css-"));
 	t.after(() => fs.rmSync(project, { recursive: true, force: true }));
 	const root = path.join(project, "www");
 	fs.mkdirSync(root);
-	const configFile = path.join(project, "astrohp.mts");
+	const configFile = path.join(project, "astralhp.mts");
 	fs.writeFileSync(configFile, 'export const config = { webroot: "www", adapter: "node" };');
 	for (const directory of ["styles", ".components", "nested", "images"]) fs.mkdirSync(path.join(root, directory));
 	fs.writeFileSync(path.join(root, "styles/plain.css"), "/* keep this */ body { margin: 0; }\n");
@@ -29,8 +29,8 @@ function fixture(t) {
 	fs.writeFileSync(
 		path.join(root, ".components/Styles.astro"),
 		`---
-import { CSS as Style } from "astrohp/components";
-import * as Assets from "astrohp/components";
+import { CSS as Style } from "astralhp/components";
+import * as Assets from "astralhp/components";
 ---
 <Style src="../styles/main.scss" media="screen" />
 <Assets.CSS src="../styles/plain.css" />`,
@@ -64,7 +64,7 @@ test("CSS validates literal local sources with the same path rules as JS", t => 
 	const site = fixture(t);
 	const filename = path.join(site.path, "nested/page.astro");
 	const parse = tag =>
-		assetReferences(site, filename, `---\nimport { CSS } from "astrohp/components";\n---\n${tag}`, "CSS");
+		assetReferences(site, filename, `---\nimport { CSS } from "astralhp/components";\n---\n${tag}`, "CSS");
 	const relative = parse('<CSS src="../styles/plain.css" />');
 	assert.match(relative.code, /src=\{"\/styles\/plain.css"\}/);
 	assert.equal(parse('<CSS src="/styles/main.scss" />').assets[0].source, path.join(site.path, "styles/main.scss"));
@@ -100,7 +100,7 @@ test("CSS keeps plain files intact and compiles SCSS for prerendered and dynamic
 	html = fs.readFileSync(path.join(site.dist, "index.html"), "utf8");
 	assert.notEqual(stylesheetURL(html), before);
 	fs.rmSync(path.join(site.path, "styles/main.scss"));
-	const server = new AstroHPServer([site], { port: 0 });
+	const server = new AstralHPServer([site], { port: 0 });
 	await server.listen();
 	try {
 		const base = `http://127.0.0.1:${server.server.address().port}`;
@@ -120,7 +120,7 @@ test("CSS rejects two sources that would use the same compiled stylesheet URL", 
 	fs.writeFileSync(
 		path.join(site.path, "index.astro"),
 		`---
-import { CSS } from "astrohp/components";
+import { CSS } from "astralhp/components";
 ---
 <CSS src="/styles/main.css" /><CSS src="/styles/main.scss" />`,
 	);
@@ -140,7 +140,7 @@ test("CSS inline embeds plain CSS and SCSS with asset-relative URLs on static an
 	fs.writeFileSync(
 		path.join(site.path, ".components/Styles.astro"),
 		`---
-import { CSS } from "astrohp/components";
+import { CSS } from "astralhp/components";
 const attributes = { inline: true, "data-plain": "yes" };
 ---
 <CSS src="../styles/main.scss" inline media="screen" />
@@ -165,7 +165,7 @@ const attributes = { inline: true, "data-plain": "yes" };
 	check(fs.readFileSync(path.join(site.dist, "index.html"), "utf8"));
 	// Inline content must be part of the server build, not read from source per request.
 	fs.rmSync(path.join(site.path, "styles"), { recursive: true });
-	const server = new AstroHPServer([site], { port: 0 });
+	const server = new AstralHPServer([site], { port: 0 });
 	await server.listen();
 	try {
 		const response = await fetch(`http://127.0.0.1:${server.server.address().port}/nested/test`);

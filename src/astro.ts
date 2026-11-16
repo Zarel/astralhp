@@ -54,12 +54,12 @@ function workerError(error: SerializedError): Error {
 	return result;
 }
 
-export interface AstroHPProcess {
+export interface AstralHPProcess {
 	readonly finished: Promise<void>;
 	close(): Promise<void>;
 }
 
-class WorkerProcess implements AstroHPProcess {
+class WorkerProcess implements AstralHPProcess {
 	readonly finished: Promise<void>;
 	private readonly child: ChildProcess;
 	private readonly ready: Promise<unknown>;
@@ -104,8 +104,8 @@ class WorkerProcess implements AstroHPProcess {
 				if (!ready) {
 					const error = new Error(
 						signal ?
-							`AstroHP worker was terminated by ${signal}` :
-							`AstroHP worker exited with status ${code}`,
+							`AstralHP worker was terminated by ${signal}` :
+							`AstralHP worker exited with status ${code}`,
 					);
 					rejectReady(error);
 					reject(error);
@@ -117,8 +117,8 @@ class WorkerProcess implements AstroHPProcess {
 					reject(
 						new Error(
 							signal ?
-								`AstroHP worker was terminated by ${signal}` :
-								`AstroHP worker exited with status ${code}`,
+								`AstralHP worker was terminated by ${signal}` :
+								`AstralHP worker exited with status ${code}`,
 						),
 					);
 				}
@@ -148,7 +148,7 @@ function run(
 	const roots: readonly Webroot[] = Array.isArray(webroots) ?
 		webroots :
 		[webroots as Webroot];
-	if (!roots.length) throw new Error("No AstroHP webroots found");
+	if (!roots.length) throw new Error("No AstralHP webroots found");
 	return new WorkerProcess({
 		operation,
 		webroots: roots.map(serializeWebroot),
@@ -166,7 +166,7 @@ export async function build(webroot: Webroot): Promise<string> {
 export async function dev(
 	webroot: Webroot,
 	options: DevServerOptions = {},
-): Promise<AstroHPProcess> {
+): Promise<AstralHPProcess> {
 	const worker = run("dev", webroot, options);
 	await worker.waitUntilReady();
 	return worker;
@@ -175,7 +175,7 @@ export async function dev(
 export async function start(
 	webroots: Webroot | readonly Webroot[],
 	options: LiveServerOptions = {},
-): Promise<AstroHPProcess> {
+): Promise<AstralHPProcess> {
 	const worker = run("start", webroots, options);
 	await worker.waitUntilReady();
 	return worker;

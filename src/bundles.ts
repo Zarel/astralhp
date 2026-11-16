@@ -81,7 +81,7 @@ export class AssetBundles {
 			base: "./",
 			logLevel: "error",
 			plugins: [{
-				name: "astrohp:bundle-dependencies",
+				name: "astralhp:bundle-dependencies",
 				buildEnd() {
 					for (const filename of this.getModuleIds()) {
 						const clean = filename.split("?")[0]!;
@@ -180,7 +180,7 @@ export class AssetBundles {
 		let server: vite.ViteDevServer | undefined;
 		let queue = Promise.resolve();
 		return {
-			name: "astrohp:bundles",
+			name: "astralhp:bundles",
 			enforce: "pre",
 			configureServer: devServer => {
 				server = devServer;
@@ -208,7 +208,7 @@ export class AssetBundles {
 						for (const environment of Object.values(server!.environments)) environment.moduleGraph.invalidateAll();
 						server!.ws.send({ type: "full-reload", path: "*" });
 					}).catch(error => {
-						server!.config.logger.error(`AstroHP asset: ${error.message}`);
+						server!.config.logger.error(`AstralHP asset: ${error.message}`);
 						server!.ws.send({ type: "error", err: { message: error.message, stack: error.stack } });
 					});
 				});
@@ -225,7 +225,7 @@ export class AssetBundles {
 					for (const reference of scripts) {
 						const bundle = await this.bundle(reference.source);
 						output.overwrite(reference.start, reference.end, `{${JSON.stringify(bundle.src)}}`);
-						output.appendLeft(reference.insert, ` __astrohpStyles={${JSON.stringify(bundle.styles)}}`);
+						output.appendLeft(reference.insert, ` __astralhpStyles={${JSON.stringify(bundle.styles)}}`);
 						if (reference.mayInline) {
 							const pathname = bundle.src.split("?")[0]!;
 							const content = inlineJS(bundle.content, pathname);
@@ -235,7 +235,7 @@ export class AssetBundles {
 							});
 							output.appendLeft(
 								reference.insert,
-								` __astrohpContent={${JSON.stringify(content)}} __astrohpInlineStyles={${
+								` __astralhpContent={${JSON.stringify(content)}} __astralhpInlineStyles={${
 									JSON.stringify(inlineStyles)
 								}}`,
 							);
@@ -246,10 +246,10 @@ export class AssetBundles {
 						output.overwrite(reference.start, reference.end, `{${JSON.stringify(reference.pathname)}}`);
 						if (reference.source.endsWith(".scss") || reference.mayInline) {
 							const bundle = await this.bundle(reference.source);
-							output.appendLeft(reference.insert, ` __astrohpHref={${JSON.stringify(bundle.src)}}`);
+							output.appendLeft(reference.insert, ` __astralhpHref={${JSON.stringify(bundle.src)}}`);
 							if (reference.mayInline) {
 								const content = inlineCSS(bundle.content, bundle.src.split("?")[0]!);
-								output.appendLeft(reference.insert, ` __astrohpContent={${JSON.stringify(content)}}`);
+								output.appendLeft(reference.insert, ` __astralhpContent={${JSON.stringify(content)}}`);
 							}
 							server?.watcher.add([...bundle.dependencies]);
 						} else {

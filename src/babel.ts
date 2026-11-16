@@ -3,7 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import type { Webroot } from "./webroot.js";
 
-const ASTROHP_ROOT = path.resolve(import.meta.dirname, "..");
+const ASTRALHP_ROOT = path.resolve(import.meta.dirname, "..");
 
 const SHOWDOWN_BABEL_OPTIONS: babel.TransformOptions = {
 	babelrc: false,
@@ -107,7 +107,7 @@ export async function prepareScript(
 
 	const result = await babel.transformFileAsync(source, {
 		...SHOWDOWN_BABEL_OPTIONS,
-		cwd: ASTROHP_ROOT,
+		cwd: ASTRALHP_ROOT,
 		sourceFileName: path
 			.relative(path.dirname(output), source)
 			.split(path.sep)

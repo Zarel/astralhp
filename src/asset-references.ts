@@ -34,7 +34,9 @@ export function assetReferences(
 	const names = new Set<string>();
 	const namespaces = new Set<string>();
 	for (const node of ast.frontmatter?.program.body ?? []) {
-		if (node.type !== "ImportDeclaration" || node.source.value !== "astrohp/components" || node.importKind === "type") {
+		if (
+			node.type !== "ImportDeclaration" || node.source.value !== "astralhp/components" || node.importKind === "type"
+		) {
 			continue;
 		}
 		for (const specifier of node.specifiers) {
@@ -84,7 +86,7 @@ export function assetReferences(
 					}
 					pathname = "/" + relative.split(path.sep).map(encodeURIComponent).join("/");
 				}
-				const url = new URL(pathname, "http://astrohp.local/");
+				const url = new URL(pathname, "http://astralhp.local/");
 				const target = webroot.resolveFile(url.pathname);
 				if (!target) fail(`source does not exist inside the webroot: ${source}`);
 				if (kind === "CSS") {

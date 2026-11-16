@@ -6,9 +6,9 @@ const fs = require("node:fs");
 const path = require("node:path");
 const net = require("node:net");
 const test = require("node:test");
-const { build, dev, Webroot } = require("astrohp");
+const { build, dev, Webroot } = require("astralhp");
 const { assetReferences } = require("../dist/asset-references.js");
-const { AstroHPServer } = require("../dist/live-server.js");
+const { AstralHPServer } = require("../dist/live-server.js");
 
 function scriptURL(site, name) {
 	const hash = createHash("sha256").update(fs.readFileSync(path.join(site.dist, `scripts/${name}.js`)))
@@ -17,7 +17,7 @@ function scriptURL(site, name) {
 }
 
 function fixture(t) {
-	const root = fs.mkdtempSync(path.resolve(__dirname, "../.astrohp-test-es3-"));
+	const root = fs.mkdtempSync(path.resolve(__dirname, "../.astralhp-test-es3-"));
 	t.after(() => fs.rmSync(root, { recursive: true, force: true }));
 	fs.mkdirSync(path.join(root, "scripts"));
 	fs.writeFileSync(path.join(root, "scripts/legacy.ts"), "const value: number = 1;");
@@ -27,8 +27,8 @@ function fixture(t) {
 test("collects imported ES3 tags, including aliases, namespaces, and conditional references", t => {
 	const site = fixture(t);
 	const source = `---
-import { ES3 as Legacy } from "astrohp/components";
-import * as Assets from "astrohp/components";
+import { ES3 as Legacy } from "astralhp/components";
+import * as Assets from "astralhp/components";
 import ES3 from "./unrelated.astro";
 ---
 😀<!-- <Legacy src="missing.ts" /> -->
@@ -45,7 +45,7 @@ import ES3 from "./unrelated.astro";
 test("rejects dynamic, missing, external, and escaping ES3 sources", t => {
 	const site = fixture(t);
 	const filename = path.join(site.path, "index.astro");
-	const check = tag => assetReferences(site, filename, `---\nimport { ES3 } from "astrohp/components";\n---\n${tag}`);
+	const check = tag => assetReferences(site, filename, `---\nimport { ES3 } from "astralhp/components";\n---\n${tag}`);
 	for (const tag of ["<ES3 src={name} />", "<ES3 {...props} />", '<ES3 src="/scripts/legacy.ts" src="other.ts" />']) {
 		assert.throws(() => check(tag), /requires a literal src/);
 	}
@@ -74,7 +74,7 @@ test("builds only ES3 references from prerendered pages and dynamic shared compo
 	fs.writeFileSync(
 		path.join(site.path, ".components/Shared.astro"),
 		`---
-import { ES3 } from "astrohp/components";
+import { ES3 } from "astralhp/components";
 ---
 <ES3 src="../scripts/legacy.ts" defer data-test="shared" />`,
 	);
@@ -82,7 +82,7 @@ import { ES3 } from "astrohp/components";
 		path.join(site.path, "index.astro"),
 		`---
 import Shared from "./.components/Shared.astro";
-import { ES3 } from "astrohp/components";
+import { ES3 } from "astralhp/components";
 export const prerender = false;
 ---
 <Shared />
@@ -91,7 +91,7 @@ export const prerender = false;
 	fs.writeFileSync(
 		path.join(site.path, "about.astro"),
 		`---
-import { ES3 } from "astrohp/components";
+import { ES3 } from "astralhp/components";
 export const prerender = true;
 ---
 <ES3 src="scripts/static.ts" />`,
@@ -109,7 +109,7 @@ export const prerender = true;
 	assert(fs.readFileSync(path.join(site.dist, "about.html"), "utf8").includes(`src="${originalURL}"`));
 	// Dynamic pages use the compiled hash without requiring the TypeScript source.
 	fs.rmSync(path.join(site.path, "scripts/legacy.ts"));
-	const server = new AstroHPServer([site], { port: 0 });
+	const server = new AstralHPServer([site], { port: 0 });
 	await server.listen();
 	try {
 		const base = `http://127.0.0.1:${server.server.address().port}`;
@@ -151,7 +151,7 @@ test("development compiles and watches ES3 references without compiling unrelate
 	const site = fixture(t);
 	fs.writeFileSync(path.join(site.path, "unused.ts"), "THIS IS NOT VALID TYPESCRIPT");
 	const page = path.join(site.path, "index.astro");
-	fs.writeFileSync(page, `---\nimport { ES3 } from "astrohp/components";\n---\n<ES3 src="scripts/legacy.ts" />`);
+	fs.writeFileSync(page, `---\nimport { ES3 } from "astralhp/components";\n---\n<ES3 src="scripts/legacy.ts" />`);
 	const reservation = net.createServer();
 	await new Promise(resolve => reservation.listen(0, "127.0.0.1", resolve));
 	const port = reservation.address().port;

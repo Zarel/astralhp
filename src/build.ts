@@ -5,7 +5,7 @@ import { generateApacheConfig } from "./apache.js";
 import { compileScripts, type ScriptCache } from "./babel.js";
 import type { AssetBundles } from "./bundles.js";
 import { serverPort } from "./live-server.js";
-import type { AstrohpResolvedRoutes, Webroot } from "./webroot.js";
+import type { AstralHPResolvedRoutes, Webroot } from "./webroot.js";
 
 type DistPaths = Pick<
 	Webroot,
@@ -56,7 +56,7 @@ export function publishDist(paths: DistPaths): void {
 export async function buildSite(
 	webroot: Webroot,
 	config: astro.AstroInlineConfig,
-	resolvedRoutes: () => AstrohpResolvedRoutes | undefined,
+	resolvedRoutes: () => AstralHPResolvedRoutes | undefined,
 	legacySources: Iterable<string> = [],
 	bundles?: AssetBundles,
 	legacyCache?: ScriptCache,
@@ -101,7 +101,7 @@ export async function buildSite(
 	publishDist(webroot);
 	if (webroot.adapter !== "node") {
 		const resolved = resolvedRoutes();
-		if (!resolved) throw new Error("Astro did not resolve the AstroHP routes");
+		if (!resolved) throw new Error("Astro did not resolve the AstralHP routes");
 		console.log(
 			generateApacheConfig(
 				webroot,

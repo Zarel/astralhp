@@ -55,7 +55,7 @@ export async function init(directory: string = process.cwd()): Promise<void> {
 	}
 
 	try {
-		console.log(`AstroHP: Setting up ${directory}`);
+		console.log(`AstralHP: Setting up ${directory}`);
 		console.log("Enter = accept a default. Ctrl+C = cancel anytime.\n");
 		console.log("Webroot directory can be . (uses the current directory) or nonexistent (will be created).");
 		const webroot = await ask("Webroot directory", "www", value => {
@@ -104,7 +104,7 @@ export async function init(directory: string = process.cwd()): Promise<void> {
 			console.log(`- ${existing ? "use existing" : "create"} \`${displayPath(apacheFile)}\``);
 		}
 		if (!staticOnly) {
-			console.log(`- create \`astrohp.mts\`, containing:\n${formatConfig(config)}`);
+			console.log(`- create \`astralhp.mts\`, containing:\n${formatConfig(config)}`);
 		} else {
 			console.log();
 		}

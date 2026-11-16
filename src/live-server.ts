@@ -6,7 +6,7 @@ import { pathToFileURL } from "node:url";
 import { contentType } from "./mime.js";
 import type { Webroot } from "./webroot.js";
 
-const DOCUMENT_ROOT_HEADER = "x-astrohp-document-root";
+const DOCUMENT_ROOT_HEADER = "x-astralhp-document-root";
 
 type RequestHandler = (
 	request: http.IncomingMessage,
@@ -62,7 +62,7 @@ function sendFile(
 	stream.pipe(response);
 }
 
-export class AstroHPServer {
+export class AstralHPServer {
 	readonly webroots: readonly Webroot[];
 	readonly server: http.Server;
 	readonly host: string;
@@ -76,13 +76,13 @@ export class AstroHPServer {
 		options: LiveServerOptions = {},
 	) {
 		if (!webroots.length) {
-			throw new Error("AstroHPServer requires at least one webroot");
+			throw new Error("AstralHPServer requires at least one webroot");
 		}
 		if (webroots.some(webroot => webroot.adapter === "apache-cgi")) {
-			throw new Error("apache-cgi sites run under Apache; use astrohp dev for local development");
+			throw new Error("apache-cgi sites run under Apache; use astralhp dev for local development");
 		}
 		if (webroots.some(webroot => webroot.adapter === "apache-static")) {
-			throw new Error("apache-static sites are served by Apache; use astrohp dev for local development");
+			throw new Error("apache-static sites are served by Apache; use astralhp dev for local development");
 		}
 		this.webroots = [...webroots];
 		this.host = options.host ?? process.env.HOST ?? "127.0.0.1";
@@ -92,7 +92,7 @@ export class AstroHPServer {
 			webroots.some(webroot => serverPort(webroot.port) !== this.port)
 		) {
 			throw new Error(
-				"Webroots with different ports require separate AstroHPServer listeners",
+				"Webroots with different ports require separate AstralHPServer listeners",
 			);
 		}
 		const nodeWebroots = webroots.filter(webroot => webroot.adapter === "node");
@@ -190,13 +190,13 @@ export class AstroHPServer {
 		for (const webroot of this.webroots) {
 			if (!fs.existsSync(webroot.dist)) {
 				throw new Error(
-					`No build found. Run "astrohp build ${webroot.path}" first.`,
+					`No build found. Run "astralhp build ${webroot.path}" first.`,
 				);
 			}
 			const entrypoint = path.join(webroot.dist, ".server", "app.mjs");
 			if (!fs.existsSync(entrypoint)) {
 				throw new Error(
-					`Build for ${webroot.path} has no Astro server entrypoint. Run "astrohp build ${webroot.path}" again.`,
+					`Build for ${webroot.path} has no Astro server entrypoint. Run "astralhp build ${webroot.path}" again.`,
 				);
 			}
 			const module = await import(pathToFileURL(entrypoint).href) as {
@@ -224,7 +224,7 @@ export class AstroHPServer {
 			"" :
 			` (${this.webroots.map(webroot => webroot.path).join(", ")})`;
 		console.log(
-			`astrohp live at http://${displayHost}:${address.port}/${sites}`,
+			`astralhp live at http://${displayHost}:${address.port}/${sites}`,
 		);
 		return this;
 	}
@@ -240,11 +240,11 @@ export class AstroHPServer {
 export async function startLive(
 	webroots: Webroot | readonly Webroot[],
 	options: LiveServerOptions = {},
-): Promise<AstroHPServer[]> {
+): Promise<AstralHPServer[]> {
 	const roots: readonly Webroot[] = Array.isArray(webroots) ?
 		webroots :
 		[webroots as Webroot];
-	if (!roots.length) throw new Error("No AstroHP webroots found");
+	if (!roots.length) throw new Error("No AstralHP webroots found");
 
 	const groups = new Map<number, Webroot[]>();
 	for (const webroot of roots) {
@@ -254,10 +254,10 @@ export async function startLive(
 		groups.set(port, group);
 	}
 
-	const servers: AstroHPServer[] = [];
+	const servers: AstralHPServer[] = [];
 	try {
 		for (const [port, group] of groups) {
-			const server = new AstroHPServer(group, { ...options, port });
+			const server = new AstralHPServer(group, { ...options, port });
 			await server.listen();
 			servers.push(server);
 		}

@@ -9,7 +9,7 @@ const { Webroot } = require("../dist/webroot.js");
 
 test("serves transformed TypeScript modules alongside classic compiled scripts", async t => {
 	const { createServer } = await import("vite");
-	const root = fs.mkdtempSync(path.resolve(__dirname, "../.astrohp-test-modules-"));
+	const root = fs.mkdtempSync(path.resolve(__dirname, "../.astralhp-test-modules-"));
 	const site = new Webroot({ webroot: root });
 	fs.writeFileSync(path.join(root, "answer.ts"), "export const answer: number = 42;");
 	fs.writeFileSync(

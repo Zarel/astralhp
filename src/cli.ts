@@ -5,7 +5,7 @@ import { init } from "./init.js";
 import { Webroot } from "./webroot.js";
 
 function usage() {
-	return "Usage: astrohp [<init|dev|build|start> [directory]]";
+	return "Usage: astralhp [<init|dev|build|start> [directory]]";
 }
 
 const COMMANDS = new Set(["init", "dev", "build", "start"]);
@@ -15,10 +15,10 @@ async function main(argv: string[]) {
 	if (!command) {
 		const webroots = await Webroot.search();
 		if (!webroots.length) {
-			console.log("No AstroHP webroots found.");
+			console.log("No AstralHP webroots found.");
 			return;
 		}
-		console.log("AstroHP webroots:");
+		console.log("AstralHP webroots:");
 		for (const webroot of webroots) {
 			const webrootPath = path.relative(process.cwd(), webroot.path) || ".";
 			console.log("  " + webrootPath);
@@ -65,6 +65,6 @@ async function main(argv: string[]) {
 }
 
 main(process.argv.slice(2)).catch(error => {
-	console.error(`astrohp: ${error.message}`);
+	console.error(`astralhp: ${error.message}`);
 	process.exitCode = 1;
 });

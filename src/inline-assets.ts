@@ -5,7 +5,7 @@ import MagicString from "magic-string";
 // Inline assets resolve URLs against their original asset location, not the page.
 function assetURL(value: string, pathname: string): string {
 	if (/^(?:[a-z][a-z\d+.-]*:|\/|#)/i.test(value) || !value) return value;
-	const url = new URL(value, `https://astrohp.invalid${pathname}`);
+	const url = new URL(value, `https://astralhp.invalid${pathname}`);
 	return url.pathname + url.search + url.hash;
 }
 

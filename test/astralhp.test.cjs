@@ -9,8 +9,8 @@ const { spawnSync } = require("node:child_process");
 const test = require("node:test");
 const { pathToFileURL } = require("node:url");
 
-const { build: buildAstroHP } = require("astrohp");
-const { DatabaseTable, MySQLDatabase, PGDatabase, SQL, SQLStatement, SQLiteDatabase } = require("astrohp/database");
+const { build: buildAstralHP } = require("astralhp");
+const { DatabaseTable, MySQLDatabase, PGDatabase, SQL, SQLStatement, SQLiteDatabase } = require("astralhp/database");
 
 const {
 	compileScripts,
@@ -27,10 +27,10 @@ const { publishDist } = require("../dist/build.js");
 const { cachebust, cachebustScript } = require("../dist/cachebuster.js");
 const { contentType } = require("../dist/mime.js");
 const {
-	AstroHPServer,
+	AstralHPServer,
 	serverPort,
 } = require("../dist/live-server.js");
-const { astrohpIntegration, Webroot } = require("../dist/webroot.js");
+const { astralhpIntegration, Webroot } = require("../dist/webroot.js");
 
 const example = path.resolve(__dirname, "../example");
 const exampleWebroot = new Webroot({ webroot: example });
@@ -46,8 +46,8 @@ const dynamicAstroRoute = {
 };
 
 test("loads the compiled package from node_modules", t => {
-	const project = fs.mkdtempSync(path.join(__dirname, "../.astrohp-test-installed-"));
-	const installed = path.join(project, "node_modules", "astrohp");
+	const project = fs.mkdtempSync(path.join(__dirname, "../.astralhp-test-installed-"));
+	const installed = path.join(project, "node_modules", "astralhp");
 	t.after(() => fs.rmSync(project, { recursive: true, force: true }));
 	fs.mkdirSync(installed, { recursive: true });
 	fs.copyFileSync(
@@ -64,8 +64,8 @@ test("loads the compiled package from node_modules", t => {
 	fs.writeFileSync(
 		source,
 		[
-			'import { Webroot, type Config } from "astrohp";',
-			'import { Database, SQL } from "astrohp/database";',
+			'import { Webroot, type Config } from "astralhp";',
+			'import { Database, SQL } from "astralhp/database";',
 			'const config: Config = { webroot: "/tmp" };',
 			"new Webroot(config);",
 			'const multiple: Config = { adapter: "apache-proxy", webroot: ["www", { webroot: "admin", port: 9002 }] };',
@@ -107,7 +107,7 @@ test("loads the compiled package from node_modules", t => {
 	const componentSource = path.join(project, "component.ts");
 	fs.writeFileSync(
 		componentSource,
-		'import { CSS, ES3, JS } from "astrohp/components"; void [CSS, ES3, JS];',
+		'import { CSS, ES3, JS } from "astralhp/components"; void [CSS, ES3, JS];',
 	);
 	const componentTypecheck = spawnSync(
 		path.resolve(__dirname, "../node_modules/.bin/tsc"),
@@ -137,8 +137,8 @@ test("loads the compiled package from node_modules", t => {
 			"--input-type=module",
 			"--eval",
 			[
-				'import { Webroot } from "astrohp";',
-				'import { Database } from "astrohp/database";',
+				'import { Webroot } from "astralhp";',
+				'import { Database } from "astralhp/database";',
 				"if (!Webroot || !Database) process.exit(1);",
 			].join("\n"),
 		],
@@ -290,15 +290,15 @@ test("queries SQLite through the database abstraction", async t => {
 });
 
 test("loads typed configuration from the working directory", async t => {
-	const project = fs.mkdtempSync(path.join(os.tmpdir(), "astrohp-test-"));
+	const project = fs.mkdtempSync(path.join(os.tmpdir(), "astralhp-test-"));
 	const webroot = path.join(project, "public");
 	t.after(() => fs.rmSync(project, { recursive: true, force: true }));
 	fs.mkdirSync(webroot);
-	const filename = path.join(project, "astrohp.mts");
+	const filename = path.join(project, "astralhp.mts");
 	fs.writeFileSync(
 		filename,
 		[
-			"export const config: import('astrohp').Config = {",
+			"export const config: import('astralhp').Config = {",
 			"\twebroot: 'public',",
 			"\tadapter: 'apache-proxy',",
 			"\tport: 9001,",
@@ -319,7 +319,7 @@ test("loads typed configuration from the working directory", async t => {
 });
 
 test("finds configurations in descendants and ancestor directories", async t => {
-	const project = fs.mkdtempSync(path.join(os.tmpdir(), "astrohp-test-"));
+	const project = fs.mkdtempSync(path.join(os.tmpdir(), "astralhp-test-"));
 	const workspace = path.join(project, "workspace");
 	const alpha = path.join(workspace, "sites", "alpha");
 	const beta = path.join(workspace, "sites", "beta");
@@ -328,19 +328,19 @@ test("finds configurations in descendants and ancestor directories", async t => 
 	fs.mkdirSync(beta);
 	fs.mkdirSync(path.join(workspace, "node_modules", "ignored"), { recursive: true });
 	fs.writeFileSync(
-		path.join(project, ".astrohp.mts"),
+		path.join(project, ".astralhp.mts"),
 		"export const config = { webroot: 'parent-public' };",
 	);
 	fs.writeFileSync(
-		path.join(alpha, "astrohp.mts"),
+		path.join(alpha, "astralhp.mts"),
 		"export const config = { webroot: 'public' };",
 	);
 	fs.writeFileSync(
-		path.join(beta, ".astrohp.mts"),
+		path.join(beta, ".astralhp.mts"),
 		"export const config = {};",
 	);
 	fs.writeFileSync(
-		path.join(workspace, "node_modules", "ignored", "astrohp.mts"),
+		path.join(workspace, "node_modules", "ignored", "astralhp.mts"),
 		'throw new Error("ignored configuration executed");',
 	);
 
@@ -359,24 +359,24 @@ test("finds configurations in descendants and ancestor directories", async t => 
 	);
 	await assert.rejects(
 		() => Webroot.requireOne(workspace),
-		/Found multiple AstroHP webroots/,
+		/Found multiple AstralHP webroots/,
 	);
 });
 
 test("rejects both configuration names in one directory", async t => {
-	const project = fs.mkdtempSync(path.join(os.tmpdir(), "astrohp-test-"));
+	const project = fs.mkdtempSync(path.join(os.tmpdir(), "astralhp-test-"));
 	t.after(() => fs.rmSync(project, { recursive: true, force: true }));
-	fs.writeFileSync(path.join(project, "astrohp.mts"), "export const config = {};");
-	fs.writeFileSync(path.join(project, ".astrohp.mts"), "export const config = {};");
+	fs.writeFileSync(path.join(project, "astralhp.mts"), "export const config = {};");
+	fs.writeFileSync(path.join(project, ".astralhp.mts"), "export const config = {};");
 
 	await assert.rejects(
 		() => Webroot.search(project),
-		/Found both astrohp\.mts and \.astrohp\.mts/,
+		/Found both astralhp\.mts and \.astralhp\.mts/,
 	);
 });
 
 test("uses the requested directory and apache-static adapter without configuration", async t => {
-	const webroot = fs.mkdtempSync(path.join(os.tmpdir(), "astrohp-test-"));
+	const webroot = fs.mkdtempSync(path.join(os.tmpdir(), "astralhp-test-"));
 	t.after(() => fs.rmSync(webroot, { recursive: true, force: true }));
 
 	assert.deepEqual(
@@ -386,13 +386,13 @@ test("uses the requested directory and apache-static adapter without configurati
 });
 
 test("requires at least one discovered webroot", async t => {
-	const directory = fs.mkdtempSync(path.join(os.tmpdir(), "astrohp-test-"));
+	const directory = fs.mkdtempSync(path.join(os.tmpdir(), "astralhp-test-"));
 	t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
 
 	assert.deepEqual(await Webroot.search(directory), []);
 	await assert.rejects(
 		() => Webroot.requireAll(directory),
-		/Could not find astrohp\.mts or \.astrohp\.mts/,
+		/Could not find astralhp\.mts or \.astralhp\.mts/,
 	);
 });
 
@@ -414,10 +414,10 @@ test("uses the configured port unless PORT overrides it", t => {
 
 test("requires separate ports for direct node webroots", () => {
 	const alpha = new Webroot({ webroot: example, adapter: "node" });
-	assert.equal(new AstroHPServer([alpha], { port: 0 }).webrootForRequest(undefined), alpha);
+	assert.equal(new AstralHPServer([alpha], { port: 0 }).webrootForRequest(undefined), alpha);
 	const beta = new Webroot({ webroot: path.dirname(example), adapter: "node" });
 	assert.throws(
-		() => new AstroHPServer([alpha, beta], { port: 0 }),
+		() => new AstralHPServer([alpha, beta], { port: 0 }),
 		/Node webroots sharing port 0 must use different ports/,
 	);
 });
@@ -431,7 +431,7 @@ test("dispatches Apache proxy requests by document root", () => {
 		webroot: path.dirname(example),
 		adapter: "apache-proxy",
 	});
-	const server = new AstroHPServer([alpha, beta], { port: 0 });
+	const server = new AstralHPServer([alpha, beta], { port: 0 });
 
 	assert.equal(server.webrootForRequest(alpha.path), alpha);
 	assert.equal(server.webrootForRequest(beta.path), beta);
@@ -448,28 +448,28 @@ test("does not fall back from an unknown Apache document root", () => {
 		adapter: "apache-proxy",
 	});
 	const node = new Webroot({ webroot: path.dirname(example), adapter: "node" });
-	const server = new AstroHPServer([apache, node], { port: 0 });
+	const server = new AstralHPServer([apache, node], { port: 0 });
 
 	assert.equal(server.webrootForRequest(undefined), node);
 	assert.equal(server.webrootForRequest("/unknown"), null);
 });
 
 test("rejects invalid executable configuration", async t => {
-	const project = fs.mkdtempSync(path.join(os.tmpdir(), "astrohp-test-"));
+	const project = fs.mkdtempSync(path.join(os.tmpdir(), "astralhp-test-"));
 	t.after(() => fs.rmSync(project, { recursive: true, force: true }));
 	fs.writeFileSync(
-		path.join(project, "astrohp.mts"),
+		path.join(project, "astralhp.mts"),
 		"export const config = { unknown: true };",
 	);
 
 	await assert.rejects(
 		() => Webroot.requireOne(project),
-		/Unknown AstroHP configuration option: unknown/,
+		/Unknown AstralHP configuration option: unknown/,
 	);
 });
 
 test("cachebusts file contents regardless of modification time", t => {
-	const webroot = fs.mkdtempSync(path.join(os.tmpdir(), "astrohp-test-"));
+	const webroot = fs.mkdtempSync(path.join(os.tmpdir(), "astralhp-test-"));
 	const site = new Webroot({ webroot });
 	t.after(() => fs.rmSync(webroot, { recursive: true, force: true }));
 
@@ -495,7 +495,7 @@ test("cachebusts file contents regardless of modification time", t => {
 });
 
 test("maps TypeScript script URLs to hashes of compiled JavaScript", async t => {
-	const webroot = fs.mkdtempSync(path.join(os.tmpdir(), "astrohp-test-"));
+	const webroot = fs.mkdtempSync(path.join(os.tmpdir(), "astralhp-test-"));
 	const site = new Webroot({ webroot });
 	t.after(() => fs.rmSync(webroot, { recursive: true, force: true }));
 
@@ -515,7 +515,7 @@ test("maps TypeScript script URLs to hashes of compiled JavaScript", async t => 
 });
 
 test("resolves cachebusted assets relative to the rendered page", t => {
-	const webroot = fs.mkdtempSync(path.join(os.tmpdir(), "astrohp-test-"));
+	const webroot = fs.mkdtempSync(path.join(os.tmpdir(), "astralhp-test-"));
 	const site = new Webroot({ webroot });
 	t.after(() => fs.rmSync(webroot, { recursive: true, force: true }));
 
@@ -544,7 +544,7 @@ test("resolves cachebusted assets relative to the rendered page", t => {
 });
 
 test("rejects assets that cannot be cachebusted locally", t => {
-	const webroot = fs.mkdtempSync(path.join(os.tmpdir(), "astrohp-test-"));
+	const webroot = fs.mkdtempSync(path.join(os.tmpdir(), "astralhp-test-"));
 	const site = new Webroot({ webroot });
 	t.after(() => fs.rmSync(webroot, { recursive: true, force: true }));
 	const base = new URL("https://example.test/");
@@ -557,8 +557,8 @@ test("rejects assets that cannot be cachebusted locally", t => {
 });
 
 test("compiles explicitly selected TypeScript targets", async t => {
-	const webroot = fs.mkdtempSync(path.join(os.tmpdir(), "astrohp-test-"));
-	const distRoot = fs.mkdtempSync(path.join(os.tmpdir(), "astrohp-test-"));
+	const webroot = fs.mkdtempSync(path.join(os.tmpdir(), "astralhp-test-"));
+	const distRoot = fs.mkdtempSync(path.join(os.tmpdir(), "astralhp-test-"));
 	t.after(() => fs.rmSync(webroot, { recursive: true, force: true }));
 	t.after(() => fs.rmSync(distRoot, { recursive: true, force: true }));
 
@@ -595,7 +595,7 @@ test("injects index.astro at the root route", () => {
 		pattern: "/",
 		entrypoint: path.join(example, "index.astro"),
 	};
-	astrohpIntegration([page]).hooks["astro:config:setup"]({
+	astralhpIntegration([page]).hooks["astro:config:setup"]({
 		injectRoute(value) {
 			route = value;
 		},
@@ -605,7 +605,7 @@ test("injects index.astro at the root route", () => {
 });
 
 test("scans nested and dynamic Astro pages", t => {
-	const webroot = fs.mkdtempSync(path.join(os.tmpdir(), "astrohp-test-"));
+	const webroot = fs.mkdtempSync(path.join(os.tmpdir(), "astralhp-test-"));
 	t.after(() => fs.rmSync(webroot, { recursive: true, force: true }));
 	fs.mkdirSync(path.join(webroot, "articles"));
 	fs.writeFileSync(path.join(webroot, "index.astro"), "");
@@ -639,7 +639,7 @@ test("uses Apache's MIME type registry", () => {
 	assert.equal(contentType("page.HTML"), "text/html");
 	assert.equal(contentType("module.js"), "text/javascript");
 	assert.equal(contentType("module.wasm"), "application/wasm");
-	assert.equal(contentType("unknown.astrohp"), "application/octet-stream");
+	assert.equal(contentType("unknown.astralhp"), "application/octet-stream");
 });
 
 test("does not expose source, private directories, or files outside the web root", () => {
@@ -652,7 +652,7 @@ test("does not expose source, private directories, or files outside the web root
 });
 
 test("does not follow a public-looking symlink into a private directory", t => {
-	const webroot = fs.mkdtempSync(path.join(os.tmpdir(), "astrohp-test-"));
+	const webroot = fs.mkdtempSync(path.join(os.tmpdir(), "astralhp-test-"));
 	t.after(() => fs.rmSync(webroot, { recursive: true, force: true }));
 
 	const privateDir = path.join(webroot, "node_modules");
@@ -673,7 +673,7 @@ test("identifies private directories at any URL depth", () => {
 
 test("keeps tooling caches beside the config and build output inside the webroot", () => {
 	const project = path.resolve("project");
-	const configFile = path.join(project, "astrohp.mts");
+	const configFile = path.join(project, "astralhp.mts");
 	const site = new Webroot({ webroot: "www" }, configFile);
 	assert.equal(site.projectCaches, path.join(project, ".caches"));
 	assert.equal(site.astroCache, path.join(project, ".caches/.astro"));
@@ -691,7 +691,7 @@ test("keeps tooling caches beside the config and build output inside the webroot
 });
 
 test("publishes a completed dist with a quick directory swap", t => {
-	const cache = fs.mkdtempSync(path.join(os.tmpdir(), "astrohp-test-"));
+	const cache = fs.mkdtempSync(path.join(os.tmpdir(), "astralhp-test-"));
 	t.after(() => fs.rmSync(cache, { recursive: true, force: true }));
 	const paths = {
 		dist: path.join(cache, "dist"),
@@ -711,7 +711,7 @@ test("publishes a completed dist with a quick directory swap", t => {
 });
 
 test("restores the current dist when publication fails", t => {
-	const cache = fs.mkdtempSync(path.join(os.tmpdir(), "astrohp-test-"));
+	const cache = fs.mkdtempSync(path.join(os.tmpdir(), "astralhp-test-"));
 	t.after(() => fs.rmSync(cache, { recursive: true, force: true }));
 	const paths = {
 		dist: path.join(cache, "dist"),
@@ -731,7 +731,7 @@ test("restores the current dist when publication fails", t => {
 });
 
 test("resolves preserve-format dist output", t => {
-	const root = fs.mkdtempSync(path.join(os.tmpdir(), "astrohp-test-"));
+	const root = fs.mkdtempSync(path.join(os.tmpdir(), "astralhp-test-"));
 	const webroot = new Webroot({ webroot: root });
 	const distRoot = webroot.dist;
 	t.after(() => fs.rmSync(root, { recursive: true, force: true }));
@@ -802,7 +802,7 @@ test("generates Apache rules in built, static, proxy order", () => {
 	assert.match(block, /\.caches\/dist\/\$1\.html/);
 	assert.match(
 		block,
-		/^RequestHeader set X-AstroHP-Document-Root "expr=%\{DOCUMENT_ROOT\}"$/m,
+		/^RequestHeader set X-AstralHP-Document-Root "expr=%\{DOCUMENT_ROOT\}"$/m,
 	);
 	assert.match(block, /^ProxyPreserveHost On$/m);
 	assert(physical > 0);
@@ -814,7 +814,7 @@ test("generates Apache rules in built, static, proxy order", () => {
 
 test("omits proxy rules when every Astro route is prerendered", () => {
 	assert.doesNotMatch(apacheBlock(9001), /http:\/\/127\.0\.0\.1/);
-	assert.doesNotMatch(apacheBlock(9001), /X-AstroHP-Document-Root/);
+	assert.doesNotMatch(apacheBlock(9001), /X-AstralHP-Document-Root/);
 	assert.doesNotMatch(apacheBlock(9001), /ProxyPreserveHost/);
 });
 
@@ -840,7 +840,7 @@ test("resolves dynamic pages into specific proxy patterns", () => {
 
 test("runs the JavaScript build API in an isolated worker", async t => {
 	const webroot = fs.mkdtempSync(
-		path.resolve(__dirname, "../.astrohp-test-worker-"),
+		path.resolve(__dirname, "../.astralhp-test-worker-"),
 	);
 	t.after(() => fs.rmSync(webroot, { recursive: true, force: true }));
 	fs.writeFileSync(
@@ -854,7 +854,7 @@ test("runs the JavaScript build API in an isolated worker", async t => {
 	);
 
 	const site = new Webroot({ webroot });
-	assert.equal(await buildAstroHP(site), site.dist);
+	assert.equal(await buildAstralHP(site), site.dist);
 	const html = fs.readFileSync(path.join(site.dist, "index.html"), "utf8");
 	const pid = html.match(/<p id="pid">(\d+)<\/p>/)?.[1];
 	assert(pid);
@@ -863,15 +863,15 @@ test("runs the JavaScript build API in an isolated worker", async t => {
 
 test("builds the configured Apache proxy adapter", async t => {
 	const project = fs.mkdtempSync(
-		path.resolve(__dirname, "../.astrohp-test-project-"),
+		path.resolve(__dirname, "../.astralhp-test-project-"),
 	);
 	const webroot = path.join(project, "public");
 	t.after(() => fs.rmSync(project, { recursive: true, force: true }));
 	fs.mkdirSync(webroot);
 	fs.writeFileSync(
-		path.join(project, "astrohp.mts"),
+		path.join(project, "astralhp.mts"),
 		[
-			"export const config: import('astrohp').Config = {",
+			"export const config: import('astralhp').Config = {",
 			"\twebroot: 'public',",
 			"\tadapter: 'apache-proxy',",
 			"\tport: 9001,",
@@ -882,11 +882,11 @@ test("builds the configured Apache proxy adapter", async t => {
 		path.join(webroot, "index.astro"),
 		[
 			"---",
-			'import { CSS } from "astrohp/components";',
+			'import { CSS } from "astralhp/components";',
 			"export const prerender = true;",
 			"---",
 			'<CSS src="style.css" />',
-			"Built by AstroHP",
+			"Built by AstralHP",
 		].join("\n"),
 	);
 	fs.writeFileSync(
@@ -904,7 +904,7 @@ test("builds the configured Apache proxy adapter", async t => {
 
 	const result = spawnSync(
 		process.execPath,
-		[path.resolve(__dirname, "../astrohp"), "build", "public"],
+		[path.resolve(__dirname, "../astralhp"), "build", "public"],
 		{
 			cwd: project,
 			encoding: "utf8",
@@ -916,7 +916,7 @@ test("builds the configured Apache proxy adapter", async t => {
 	assert(fs.statSync(path.join(project, ".caches/.astro/types.d.ts")).isFile());
 	assert.match(
 		fs.readFileSync(path.join(webroot, ".caches/dist/index.html"), "utf8"),
-		/Built by AstroHP$/,
+		/Built by AstralHP$/,
 	);
 	const serverEntrypoint = path.join(
 		webroot,
@@ -930,14 +930,14 @@ test("builds the configured Apache proxy adapter", async t => {
 	const htaccess = fs.readFileSync(path.join(webroot, ".htaccess"), "utf8");
 	assert.match(
 		htaccess,
-		/^# ===== BEGIN ASTROHP =====$/m,
+		/^# ===== BEGIN ASTRALHP =====$/m,
 	);
 	assert.match(htaccess, /RewriteRule "\^live\/\?\$"/);
-	assert.match(htaccess, /X-AstroHP-Document-Root/);
+	assert.match(htaccess, /X-AstralHP-Document-Root/);
 });
 
-test("replaces only AstroHP's managed Apache section", t => {
-	const webroot = fs.mkdtempSync(path.join(os.tmpdir(), "astrohp-test-"));
+test("replaces only AstralHP's managed Apache section", t => {
+	const webroot = fs.mkdtempSync(path.join(os.tmpdir(), "astralhp-test-"));
 	const site = new Webroot({ webroot, adapter: "apache-proxy" });
 	t.after(() => fs.rmSync(webroot, { recursive: true, force: true }));
 	const filename = path.join(webroot, ".htaccess");
@@ -945,9 +945,9 @@ test("replaces only AstroHP's managed Apache section", t => {
 		filename,
 		[
 			"# user rule before",
-			"# ===== BEGIN ASTROHP =====",
+			"# ===== BEGIN ASTRALHP =====",
 			"old generated rule",
-			"# ===== END ASTROHP =====",
+			"# ===== END ASTRALHP =====",
 			"# user rule after",
 			"",
 		].join("\n"),
@@ -967,29 +967,29 @@ test("replaces only AstroHP's managed Apache section", t => {
 	assert.equal(fs.readFileSync(filename, "utf8"), generated);
 });
 
-test("appends an AstroHP section when none can be located", () => {
+test("appends an AstralHP section when none can be located", () => {
 	const updated = replaceApacheBlock(
 		"# user rule\n",
 		apacheBlock(9001, [dynamicApacheRoute]),
 	);
 
-	assert.match(updated, /^# user rule\n\n# ===== BEGIN ASTROHP =====/);
+	assert.match(updated, /^# user rule\n\n# ===== BEGIN ASTRALHP =====/);
 	assert.match(updated, /127\.0\.0\.1:9001/);
-	assert.match(updated, /# ===== END ASTROHP =====\n$/);
+	assert.match(updated, /# ===== END ASTRALHP =====\n$/);
 });
 
 test("rejects malformed managed Apache sections", () => {
 	assert.throws(
-		() => replaceApacheBlock("# ===== BEGIN ASTROHP =====\n", apacheBlock()),
+		() => replaceApacheBlock("# ===== BEGIN ASTRALHP =====\n", apacheBlock()),
 		/exactly one/,
 	);
 	assert.throws(
 		() =>
 			replaceApacheBlock(
 				[
-					"# ===== BEGIN ASTROHP =====",
-					"# ===== END ASTROHP =====",
-					"# ===== END ASTROHP =====",
+					"# ===== BEGIN ASTRALHP =====",
+					"# ===== END ASTRALHP =====",
+					"# ===== END ASTRALHP =====",
 					"",
 				].join("\n"),
 				apacheBlock(),
@@ -999,55 +999,55 @@ test("rejects malformed managed Apache sections", () => {
 });
 
 test("documents all commands", () => {
-	const result = spawnSync(process.execPath, [path.resolve(__dirname, "../astrohp"), "--help"], {
+	const result = spawnSync(process.execPath, [path.resolve(__dirname, "../astralhp"), "--help"], {
 		encoding: "utf8",
 	});
 	assert.equal(result.status, 0);
 	assert.equal(
 		result.stdout.trim(),
-		"Usage: astrohp [<init|dev|build|start> [directory]]",
+		"Usage: astralhp [<init|dev|build|start> [directory]]",
 	);
 	assert.equal(result.stderr, "");
 });
 
 test("lists every discovered webroot when no command is given", t => {
-	const project = fs.mkdtempSync(path.join(os.tmpdir(), "astrohp-test-"));
+	const project = fs.mkdtempSync(path.join(os.tmpdir(), "astralhp-test-"));
 	t.after(() => fs.rmSync(project, { recursive: true, force: true }));
 	const first = path.join(project, "first");
 	const second = path.join(project, "second");
 	fs.mkdirSync(first);
 	fs.mkdirSync(second);
 	fs.writeFileSync(
-		path.join(first, "astrohp.mts"),
+		path.join(first, "astralhp.mts"),
 		"export const config = { webroot: 'public' };",
 	);
 	fs.writeFileSync(
-		path.join(second, ".astrohp.mts"),
+		path.join(second, ".astralhp.mts"),
 		"export const config = {};",
 	);
 
 	const result = spawnSync(
 		process.execPath,
-		[path.resolve(__dirname, "../astrohp")],
+		[path.resolve(__dirname, "../astralhp")],
 		{ cwd: project, encoding: "utf8" },
 	);
 	assert.equal(result.status, 0, result.stderr);
 	assert.equal(
 		result.stdout.trim(),
-		["AstroHP webroots:", "  first/public", "  second"].join("\n"),
+		["AstralHP webroots:", "  first/public", "  second"].join("\n"),
 	);
 	assert.equal(result.stderr, "");
 });
 
 test("builds every discovered webroot", t => {
-	const project = fs.mkdtempSync(path.join(os.tmpdir(), "astrohp-test-"));
+	const project = fs.mkdtempSync(path.join(os.tmpdir(), "astralhp-test-"));
 	t.after(() => fs.rmSync(project, { recursive: true, force: true }));
 	const first = path.join(project, "first");
 	const second = path.join(project, "second");
 	for (const webroot of [first, second]) {
 		fs.mkdirSync(webroot);
 		fs.writeFileSync(
-			path.join(webroot, "astrohp.mts"),
+			path.join(webroot, "astralhp.mts"),
 			"export const config = {};",
 		);
 		fs.writeFileSync(
@@ -1058,7 +1058,7 @@ test("builds every discovered webroot", t => {
 
 	const result = spawnSync(
 		process.execPath,
-		[path.resolve(__dirname, "../astrohp"), "build"],
+		[path.resolve(__dirname, "../astralhp"), "build"],
 		{ cwd: project, encoding: "utf8" },
 	);
 	assert.equal(result.status, 0, result.stderr);
@@ -1070,34 +1070,34 @@ test("builds every discovered webroot", t => {
 });
 
 test("requires a discoverable webroot when the directory is omitted", t => {
-	const directory = fs.mkdtempSync(path.join(os.tmpdir(), "astrohp-test-"));
+	const directory = fs.mkdtempSync(path.join(os.tmpdir(), "astralhp-test-"));
 	t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
 
 	const result = spawnSync(
 		process.execPath,
-		[path.resolve(__dirname, "../astrohp"), "build"],
+		[path.resolve(__dirname, "../astralhp"), "build"],
 		{ cwd: directory, encoding: "utf8" },
 	);
 	assert.equal(result.status, 1);
-	assert.match(result.stderr, /Could not find astrohp\.mts or \.astrohp\.mts/);
+	assert.match(result.stderr, /Could not find astralhp\.mts or \.astralhp\.mts/);
 	assert.match(result.stderr, /specify a webroot directory/);
 	assert.equal(fs.existsSync(path.join(directory, ".caches")), false);
 });
 
 test("does not load executable configuration for an invalid command", t => {
-	const project = fs.mkdtempSync(path.join(os.tmpdir(), "astrohp-test-"));
+	const project = fs.mkdtempSync(path.join(os.tmpdir(), "astralhp-test-"));
 	t.after(() => fs.rmSync(project, { recursive: true, force: true }));
 	fs.writeFileSync(
-		path.join(project, "astrohp.mts"),
+		path.join(project, "astralhp.mts"),
 		'throw new Error("configuration executed");',
 	);
 
 	const result = spawnSync(
 		process.execPath,
-		[path.resolve(__dirname, "../astrohp"), "invalid"],
+		[path.resolve(__dirname, "../astralhp"), "invalid"],
 		{ cwd: project, encoding: "utf8" },
 	);
 	assert.equal(result.status, 1);
-	assert.match(result.stderr, /Usage: astrohp/);
+	assert.match(result.stderr, /Usage: astralhp/);
 	assert.doesNotMatch(result.stderr, /configuration executed/);
 });

@@ -8,12 +8,12 @@ const { spawnSync } = require("node:child_process");
 const { pathToFileURL } = require("node:url");
 const test = require("node:test");
 const { createConfig } = require("../dist/config-loader.js");
-const { Webroot } = require("astrohp");
+const { Webroot } = require("astralhp");
 
-const cli = path.resolve(__dirname, "../astrohp");
+const cli = path.resolve(__dirname, "../astralhp");
 
 function fixture(t) {
-	const project = fs.mkdtempSync(path.join(os.tmpdir(), "astrohp-test-init-"));
+	const project = fs.mkdtempSync(path.join(os.tmpdir(), "astralhp-test-init-"));
 	t.after(() => fs.rmSync(project, { recursive: true, force: true }));
 	return project;
 }
@@ -28,7 +28,7 @@ function run(project, input, args = []) {
 }
 
 async function readConfig(project) {
-	return (await import(pathToFileURL(path.join(project, "astrohp.mts")).href)).config;
+	return (await import(pathToFileURL(path.join(project, "astralhp.mts")).href)).config;
 }
 
 test("init defaults to an empty www/.htaccess without a config file", async t => {
@@ -39,7 +39,7 @@ test("init defaults to an empty www/.htaccess without a config file", async t =>
 	assert.match(result.stdout, /Adapter \(apache-static\)/);
 	assert.doesNotMatch(result.stdout, /Port \(|Interpreter path:/);
 	assert.match(result.stdout, /Ready\. This will:\n- create `www`\n- create `www\/\.htaccess`\n\nGo\? \(yes\):/);
-	assert.doesNotMatch(result.stdout, /export const config|astrohp\.mts/);
+	assert.doesNotMatch(result.stdout, /export const config|astralhp\.mts/);
 	assert.deepEqual(fs.readdirSync(project), ["www"]);
 	assert.equal(fs.readFileSync(path.join(project, "www/.htaccess"), "utf8"), "");
 	const site = await Webroot.requireOne(project);
@@ -59,10 +59,10 @@ test("init respects the project directory argument and preserves existing Apache
 	assert.equal(result.status, 0, result.stderr || result.error);
 	assert.match(result.stdout, /Adapter \(apache-static\)/);
 	assert.doesNotMatch(result.stdout, /Port \(|Interpreter path:/);
-	assert.equal(fs.existsSync(path.join(target, "astrohp.mts")), false);
+	assert.equal(fs.existsSync(path.join(target, "astralhp.mts")), false);
 	assert.match(result.stdout, /- use existing `public`\n- use existing `public\/\.htaccess`/);
 	assert.equal(fs.readFileSync(apache, "utf8"), "# existing Apache rules\n");
-	assert.equal(fs.existsSync(path.join(project, "astrohp.mts")), false);
+	assert.equal(fs.existsSync(path.join(project, "astralhp.mts")), false);
 });
 
 test("init can explicitly select apache-static with the project directory as webroot", t => {
@@ -82,8 +82,8 @@ test("init retries invalid answers and saves proxy settings", async t => {
 	assert.match(result.stdout, /adapter must be/);
 	assert.match(result.stdout, /Please answer yes or no/);
 	assert.match(result.stdout, /Port must be an integer from 1 to 65535/);
-	assert(result.stdout.indexOf('export const config: import("astrohp").Config') < result.stdout.indexOf("Go?"));
-	assert.match(result.stdout, /- create `\.htaccess`\n- create `astrohp\.mts`, containing:/);
+	assert(result.stdout.indexOf('export const config: import("astralhp").Config') < result.stdout.indexOf("Go?"));
+	assert.match(result.stdout, /- create `\.htaccess`\n- create `astralhp\.mts`, containing:/);
 	assert.equal(fs.readFileSync(path.join(project, ".htaccess"), "utf8"), "");
 	assert.deepEqual(await readConfig(project), { webroot: ".", adapter: "apache-proxy", port: 9001 });
 	assert.equal(fs.existsSync(path.join(project, "www")), false);
@@ -107,7 +107,7 @@ test("init prompts for CGI interpreter paths and allows the PATH default", async
 		assert.doesNotMatch(result.stdout, /Port \(/);
 		assert.match(
 			result.stdout,
-			/Ready\. This will:\n- create `www`\n- create `www\/\.htaccess`\n- create `astrohp\.mts`, containing:/,
+			/Ready\. This will:\n- create `www`\n- create `www\/\.htaccess`\n- create `astralhp\.mts`, containing:/,
 		);
 		assert.equal(fs.readFileSync(path.join(project, "www/.htaccess"), "utf8"), "");
 		if (runtimePath) assert.match(result.stdout, /runtimePath must be an absolute path/);
@@ -130,9 +130,9 @@ test("init cancels without writing on rejection or end of input", t => {
 });
 
 test("init refuses existing config files and dangling symlinks without executing them", t => {
-	for (const name of ["astrohp.mts", ".astrohp.mts", "symlink"]) {
+	for (const name of ["astralhp.mts", ".astralhp.mts", "symlink"]) {
 		const project = fixture(t);
-		const filename = path.join(project, name === "symlink" ? "astrohp.mts" : name);
+		const filename = path.join(project, name === "symlink" ? "astralhp.mts" : name);
 		const source = 'throw new Error("configuration executed");';
 		if (name === "symlink") fs.symlinkSync(path.join(project, "missing"), filename);
 		else fs.writeFileSync(filename, source);

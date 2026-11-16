@@ -17,18 +17,18 @@ export { validateConfig } from "./config-loader.js";
 
 const PRIVATE_DIRECTORIES = new Set([".caches", ".server", "node_modules"]);
 
-export interface AstrohpPage {
+export interface AstralHPPage {
 	pattern: string;
 	entrypoint: string;
 }
 
-export interface AstrohpResolvedRoutes {
+export interface AstralHPResolvedRoutes {
 	routes: astro.IntegrationResolvedRoute[];
 	trailingSlash: astro.AstroConfig["trailingSlash"];
 }
 
-export interface AstrohpConfigOptions {
-	onRoutesResolved?: (resolved: AstrohpResolvedRoutes) => void;
+export interface AstralHPConfigOptions {
+	onRoutesResolved?: (resolved: AstralHPResolvedRoutes) => void;
 	entrypointRoot?: string;
 	staticOnly?: boolean;
 	prerender?: boolean;
@@ -42,9 +42,9 @@ function canonicalPath(filename: string): string {
 	}
 }
 
-export function astrohpIntegration(
-	pages: AstrohpPage[],
-	options: AstrohpConfigOptions = {},
+export function astralhpIntegration(
+	pages: AstralHPPage[],
+	options: AstralHPConfigOptions = {},
 ): astro.AstroIntegration {
 	const entrypoints = new Set(
 		pages.map(page => canonicalPath(page.entrypoint)),
@@ -58,7 +58,7 @@ export function astrohpIntegration(
 		);
 
 	return {
-		name: "astrohp",
+		name: "astralhp",
 		hooks: {
 			"astro:config:setup"({ injectRoute }) {
 				// Set page defaults independently of the adapter's output mode.
@@ -79,7 +79,7 @@ export function astrohpIntegration(
 					if (dynamic.length) {
 						throw new Error(
 							`apache-static does not support dynamic routes:\n${dynamic.map(route => route.entrypoint).join("\n")}\n` +
-								'Set prerender = true on these pages or in astrohp.mts, or set adapter to "apache-cgi", "apache-proxy", or "node" in astrohp.mts.',
+								'Set prerender = true on these pages or in astralhp.mts, or set adapter to "apache-cgi", "apache-proxy", or "node" in astralhp.mts.',
 						);
 					}
 				}
@@ -176,7 +176,7 @@ export class Webroot {
 		if (!requestUrl) return null;
 		try {
 			const pathname = decodeURIComponent(
-				new URL(requestUrl, "http://astrohp.local").pathname,
+				new URL(requestUrl, "http://astralhp.local").pathname,
 			);
 			return pathname.split("/").filter(Boolean);
 		} catch {
@@ -223,8 +223,8 @@ export class Webroot {
 		return parts === null || this.hasPrivateDirectory(parts);
 	}
 
-	scanPages(): AstrohpPage[] {
-		const pages: AstrohpPage[] = [];
+	scanPages(): AstralHPPage[] {
+		const pages: AstralHPPage[] = [];
 		const patterns = new Map<string, string>();
 
 		const scan = (directory: string): void => {

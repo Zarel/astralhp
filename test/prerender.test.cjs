@@ -4,12 +4,12 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 const test = require("node:test");
-const { build, Webroot } = require("astrohp");
+const { build, Webroot } = require("astralhp");
 const { validateConfig } = require("../dist/config-loader.js");
 
 for (const adapter of ["node", "apache-proxy", "apache-cgi"]) {
 	test(`${adapter} prerenders by default and respects config and page overrides`, async t => {
-		const root = fs.mkdtempSync(path.resolve(__dirname, "../.astrohp-test-prerender-"));
+		const root = fs.mkdtempSync(path.resolve(__dirname, "../.astralhp-test-prerender-"));
 		t.after(() => fs.rmSync(root, { recursive: true, force: true }));
 		fs.writeFileSync(path.join(root, "index.astro"), "Default page");
 		fs.writeFileSync(path.join(root, "static.astro"), "---\nexport const prerender = true;\n---\nAlways static");
@@ -33,7 +33,7 @@ for (const adapter of ["node", "apache-proxy", "apache-cgi"]) {
 }
 
 test("apache-static honors a false default but requires every page to opt back into prerendering", async t => {
-	const root = fs.mkdtempSync(path.resolve(__dirname, "../.astrohp-test-prerender-"));
+	const root = fs.mkdtempSync(path.resolve(__dirname, "../.astralhp-test-prerender-"));
 	t.after(() => fs.rmSync(root, { recursive: true, force: true }));
 	const site = new Webroot({ webroot: root, adapter: "apache-static", prerender: false });
 	fs.writeFileSync(path.join(root, "index.astro"), "Dynamic by config");

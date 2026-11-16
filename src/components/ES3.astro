@@ -5,13 +5,13 @@ import { Webroot } from "../webroot.js";
 
 type Props = Omit<HTMLAttributes<"script">, "src"> & {
 	src: string;
-	/** @internal Filled by AstroHP for compiled scripts. */
-	__astrohpSrc?: string;
+	/** @internal Filled by AstralHP for compiled scripts. */
+	__astralhpSrc?: string;
 };
 
-const { src, __astrohpSrc, ...attributes } = Astro.props;
-const resolvedSrc = __astrohpSrc ?? cachebustScript(
-	new Webroot({ webroot: import.meta.env.ASTROHP_WEBROOT }),
+const { src, __astralhpSrc, ...attributes } = Astro.props;
+const resolvedSrc = __astralhpSrc ?? cachebustScript(
+	new Webroot({ webroot: import.meta.env.ASTRALHP_WEBROOT }),
 	src,
 	Astro.url,
 );

@@ -2,7 +2,7 @@ export type Adapter = "node" | "apache-proxy" | "apache-cgi" | "apache-static";
 
 export interface WebrootConfig {
 	/**
-	 * Which directory to use as AstroHP's webroot, relative to the config
+	 * Which directory to use as AstralHP's webroot, relative to the config
 	 * file.
 	 *
 	 * @default '.'
@@ -33,7 +33,7 @@ export interface WebrootConfig {
 	 */
 	runtimePath?: string;
 	/**
-	 * Port for the AstroHP server. `apache-proxy` webroots with the same port
+	 * Port for the AstralHP server. `apache-proxy` webroots with the same port
 	 * share one listener in the same process. Each `node` webroot must use a
 	 * different port. With `apache-proxy`, the port only serves dynamic routes
 	 * and is proxied by Apache.

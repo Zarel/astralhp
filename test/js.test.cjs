@@ -6,13 +6,13 @@ const net = require("node:net");
 const path = require("node:path");
 const test = require("node:test");
 const { pathToFileURL } = require("node:url");
-const { build, dev, Webroot } = require("astrohp");
-const { AstroHPServer } = require("../dist/live-server.js");
+const { build, dev, Webroot } = require("astralhp");
+const { AstralHPServer } = require("../dist/live-server.js");
 const { AssetBundles } = require("../dist/bundles.js");
 const { EventEmitter } = require("node:events");
 
 function fixture(t) {
-	const root = fs.mkdtempSync(path.resolve(__dirname, "../.astrohp-test-js-"));
+	const root = fs.mkdtempSync(path.resolve(__dirname, "../.astralhp-test-js-"));
 	t.after(() => fs.rmSync(root, { recursive: true, force: true }));
 	fs.mkdirSync(path.join(root, "scripts"));
 	fs.writeFileSync(path.join(root, "scripts/dependency.js"), 'export const message = "dependency-one";');
@@ -41,7 +41,7 @@ export const load = () => import("./lazy.ts");
 	fs.writeFileSync(
 		path.join(root, ".components/Assets.astro"),
 		`---
-import { JS as Script } from "astrohp/components";
+import { JS as Script } from "astralhp/components";
 ---
 <Script src="../scripts/app.ts" data-test="bundled" />`,
 	);
@@ -49,7 +49,7 @@ import { JS as Script } from "astrohp/components";
 		path.join(root, "index.astro"),
 		`---
 import Assets from "./.components/Assets.astro";
-import * as Scripts from "astrohp/components";
+import * as Scripts from "astralhp/components";
 export const prerender = true;
 ---
 <Assets /><Scripts.JS src="/scripts/plain.js" />`,
@@ -93,7 +93,7 @@ test("JS bundles use stable paths, include dependencies and CSS, and render on s
 	assert.equal(await module.answer({ value: "custom" }), "custom");
 	const htaccess = fs.readFileSync(path.join(site.path, ".htaccess"), "utf8");
 	assert(htaccess.indexOf("# Serve built files") < htaccess.indexOf("# Serve all other files"));
-	const server = new AstroHPServer([site], { port: 0 });
+	const server = new AstralHPServer([site], { port: 0 });
 	await server.listen();
 	try {
 		const base = `http://127.0.0.1:${server.server.address().port}`;
@@ -124,7 +124,7 @@ test("JS rejects computed sources and conflicting ES3 output paths", async t => 
 	fs.writeFileSync(
 		path.join(site.path, "index.astro"),
 		`---
-import { JS } from "astrohp/components";
+import { JS } from "astralhp/components";
 const src = "/scripts/app.ts";
 ---
 <JS src={src} />`,
@@ -133,7 +133,7 @@ const src = "/scripts/app.ts";
 	fs.writeFileSync(
 		path.join(site.path, "index.astro"),
 		`---
-import { JS, ES3 } from "astrohp/components";
+import { JS, ES3 } from "astralhp/components";
 ---
 <JS src="/scripts/app.ts" /><ES3 src="/scripts/app.ts" />`,
 	);
@@ -152,7 +152,7 @@ export const location = import.meta.url;
 	fs.writeFileSync(
 		path.join(site.path, ".components/Assets.astro"),
 		`---
-import { JS } from "astrohp/components";
+import { JS } from "astralhp/components";
 const inline = !Astro.url.searchParams.has("external");
 ---
 <JS src="../scripts/app.ts" inline={inline} nonce="test-nonce" data-test="inline" />`,
@@ -190,7 +190,7 @@ export const prerender = false;
 	};
 	await check(fs.readFileSync(path.join(site.dist, "index.html"), "utf8"));
 	fs.rmSync(path.join(site.path, "scripts"), { recursive: true });
-	const server = new AstroHPServer([site], { port: 0 });
+	const server = new AstralHPServer([site], { port: 0 });
 	await server.listen();
 	try {
 		const base = `http://127.0.0.1:${server.server.address().port}`;

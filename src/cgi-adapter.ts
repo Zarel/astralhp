@@ -12,7 +12,7 @@ export function cgiAdapter(): AstroIntegration {
 	const configure = integration.hooks["astro:config:done"]!;
 	return {
 		...integration,
-		name: "astrohp/apache-cgi",
+		name: "astralhp/apache-cgi",
 		hooks: {
 			...integration.hooks,
 			"astro:config:done": context =>
@@ -22,7 +22,7 @@ export function cgiAdapter(): AstroIntegration {
 						const { previewEntrypoint: _previewEntrypoint, ...options } = adapter;
 						context.setAdapter({
 							...options,
-							name: "astrohp/apache-cgi",
+							name: "astralhp/apache-cgi",
 							serverEntrypoint: fileURLToPath(new URL("./cgi-server/app.js", import.meta.url)),
 						});
 					},

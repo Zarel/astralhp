@@ -27,7 +27,7 @@ export function es3Plugin(
 		for (const source of previous ?? []) if (!referenced(source)) removeOutput(source);
 	};
 	return {
-		name: "astrohp:es3",
+		name: "astralhp:es3",
 		enforce: "pre",
 		configureServer(devServer) {
 			server = devServer;
@@ -44,7 +44,7 @@ export function es3Plugin(
 						server!.ws.send({ type: "full-reload", path: "*" });
 					} catch (error) {
 						cache.delete(filename);
-						server!.config.logger.error(`AstroHP ES3: ${(error as Error).message}`);
+						server!.config.logger.error(`AstralHP ES3: ${(error as Error).message}`);
 					}
 				});
 			});
@@ -78,7 +78,7 @@ export function es3Plugin(
 					const compiled = await pending;
 					if (!compiled) throw new Error(`No compiled script produced for ${reference.source}`);
 					const src = `${reference.pathname.replace(/\.tsx?$/, ".js")}?v=${contentHash(compiled.code)}`;
-					output.appendLeft(reference.insert, ` __astrohpSrc={${JSON.stringify(src)}}`);
+					output.appendLeft(reference.insert, ` __astralhpSrc={${JSON.stringify(src)}}`);
 				}
 				return {
 					code: output.toString(),

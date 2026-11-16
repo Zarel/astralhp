@@ -3,7 +3,7 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import type { Adapter, Config, WebrootConfig } from "./config.d.ts";
 
-const CONFIG_FILENAMES = ["astrohp.mts", ".astrohp.mts"] as const;
+const CONFIG_FILENAMES = ["astralhp.mts", ".astralhp.mts"] as const;
 const IGNORED_DIRECTORIES = new Set(["node_modules", ".git", ".caches"]);
 const ADAPTERS = new Set<Adapter>(["node", "apache-proxy", "apache-cgi", "apache-static"]);
 
@@ -23,14 +23,14 @@ export function assertCanCreateConfig(directory: string): void {
 
 export function formatConfig(config: Config): string {
 	validateConfig(config, "Configuration");
-	return `export const config: import("astrohp").Config = ${JSON.stringify(config, null, "\t")};\n`;
+	return `export const config: import("astralhp").Config = ${JSON.stringify(config, null, "\t")};\n`;
 }
 
 /** Create a config; existing executable configs must not be serialized over. */
 export function createConfig(directory: string, config: Config): string {
 	const source = formatConfig(config);
 	assertCanCreateConfig(directory);
-	const filename = path.resolve(directory, "astrohp.mts");
+	const filename = path.resolve(directory, "astralhp.mts");
 	fs.writeFileSync(filename, source, { flag: "wx" });
 	return filename;
 }
@@ -43,12 +43,12 @@ export function validateConfig(value: any, filename: string): Config {
 
 	for (const key of Object.keys(value)) {
 		if (key !== "webroot" && key !== "adapter" && key !== "port" && key !== "runtimePath" && key !== "prerender") {
-			throw new Error(`Unknown AstroHP configuration option: ${key}`);
+			throw new Error(`Unknown AstralHP configuration option: ${key}`);
 		}
 	}
 	if (Array.isArray(value.webroot)) {
 		if (!value.webroot.length) {
-			throw new Error("AstroHP configuration option webroot must not be an empty array");
+			throw new Error("AstralHP configuration option webroot must not be an empty array");
 		}
 		for (const [index, entry] of value.webroot.entries()) {
 			const label = `${filename}: webroot[${index}]`;
@@ -65,31 +65,31 @@ export function validateConfig(value: any, filename: string): Config {
 		value.webroot !== undefined &&
 		(typeof value.webroot !== "string" || !value.webroot)
 	) {
-		throw new Error("AstroHP configuration option webroot must be a non-empty string or array");
+		throw new Error("AstralHP configuration option webroot must be a non-empty string or array");
 	}
 	if (
 		value.adapter !== undefined &&
 		(typeof value.adapter !== "string" || !ADAPTERS.has(value.adapter as Adapter))
 	) {
 		throw new Error(
-			'AstroHP configuration option adapter must be "node", "apache-proxy", "apache-cgi", or "apache-static"',
+			'AstralHP configuration option adapter must be "node", "apache-proxy", "apache-cgi", or "apache-static"',
 		);
 	}
 	if (value.prerender !== undefined && typeof value.prerender !== "boolean") {
-		throw new Error("AstroHP configuration option prerender must be a boolean");
+		throw new Error("AstralHP configuration option prerender must be a boolean");
 	}
 	if (
 		value.port !== undefined &&
 		(typeof value.port !== "number" || !Number.isInteger(value.port) ||
 			value.port < 0 || value.port > 65535)
 	) {
-		throw new Error("AstroHP configuration option port must be an integer from 0 to 65535");
+		throw new Error("AstralHP configuration option port must be an integer from 0 to 65535");
 	}
 	if (
 		value.runtimePath !== undefined && (typeof value.runtimePath !== "string" ||
 			!path.isAbsolute(value.runtimePath) || /[\s\0]/.test(value.runtimePath))
 	) {
-		throw new Error("AstroHP configuration option runtimePath must be an absolute path without whitespace");
+		throw new Error("AstralHP configuration option runtimePath must be an absolute path without whitespace");
 	}
 	return value as Config;
 }
@@ -229,7 +229,7 @@ export async function requireConfig(directory: string = process.cwd()): Promise<
 	const configs = await requireConfigs(directory);
 	if (configs.length > 1) {
 		throw new Error(
-			`Found multiple AstroHP webroots; specify one:\n${configs.map(config => config.config.webroot).join("\n")}`,
+			`Found multiple AstralHP webroots; specify one:\n${configs.map(config => config.config.webroot).join("\n")}`,
 		);
 	}
 	return configs[0]!;

@@ -5,12 +5,12 @@ const fs = require("node:fs");
 const net = require("node:net");
 const path = require("node:path");
 const test = require("node:test");
-const { build, dev, start, Webroot } = require("astrohp");
+const { build, dev, start, Webroot } = require("astralhp");
 const { apacheBlock, writeApacheConfig } = require("../dist/apache.js");
-const { astrohpIntegration } = require("../dist/webroot.js");
+const { astralhpIntegration } = require("../dist/webroot.js");
 
 function fixture(t) {
-	const root = fs.mkdtempSync(path.resolve(__dirname, "../.astrohp-test-static-"));
+	const root = fs.mkdtempSync(path.resolve(__dirname, "../.astralhp-test-static-"));
 	t.after(() => fs.rmSync(root, { recursive: true, force: true }));
 	return new Webroot({ webroot: root, port: 0 });
 }
@@ -34,7 +34,7 @@ test("apache-static builds default and parameterized static pages with compiled 
 	const site = fixture(t);
 	fs.writeFileSync(
 		path.join(site.path, "index.astro"), `---
-import { CSS, JS, ES3 } from "astrohp/components";
+import { CSS, JS, ES3 } from "astralhp/components";
 ---
 <h1>Static home</h1>
 <CSS src="/style.scss" /><JS src="/app.ts" /><ES3 src="/legacy.ts" />`,
@@ -68,7 +68,7 @@ export function getStaticPaths() { return [{ params: { id: "about" } }]; }
 });
 
 test("apache-static also rejects injected dynamic endpoints", () => {
-	const integration = astrohpIntegration([], { staticOnly: true });
+	const integration = astralhpIntegration([], { staticOnly: true });
 	assert.doesNotThrow(() => integration.hooks["astro:routes:resolved"]({
 		routes: [{
 			type: "endpoint",

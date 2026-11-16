@@ -8,24 +8,29 @@ type Props = Omit<HTMLAttributes<"link">, "href" | "rel"> & {
 	/** Embed the stylesheet in a style element. */
 	inline?: boolean;
 	/** @internal Prepared stylesheet contents. */
-	__astrohpContent?: string;
-	/** @internal Filled by AstroHP for compiled stylesheets. */
-	__astrohpHref?: string;
+	__astralhpContent?: string;
+	/** @internal Filled by AstralHP for compiled stylesheets. */
+	__astralhpHref?: string;
 };
 
-const { src, inline = false, __astrohpContent, __astrohpHref, ...attributes } =
-	Astro.props;
-if (inline && __astrohpContent === undefined) {
+const {
+	src,
+	inline = false,
+	__astralhpContent,
+	__astralhpHref,
+	...attributes
+} = Astro.props;
+if (inline && __astralhpContent === undefined) {
 	throw new Error(
-		'Import CSS directly from "astrohp/components" and use a literal src',
+		'Import CSS directly from "astralhp/components" and use a literal src',
 	);
 }
-const href = inline ? undefined : __astrohpHref ?? cachebust(
-	new Webroot({ webroot: import.meta.env.ASTROHP_WEBROOT }),
+const href = inline ? undefined : __astralhpHref ?? cachebust(
+	new Webroot({ webroot: import.meta.env.ASTRALHP_WEBROOT }),
 	src,
 	Astro.url,
 );
 ---
-{inline ? <style is:inline {...attributes} set:html={__astrohpContent} /> : (
+{inline ? <style is:inline {...attributes} set:html={__astralhpContent} /> : (
 	 <link {...attributes} rel="stylesheet" href={href} />
  )}

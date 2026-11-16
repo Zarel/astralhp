@@ -7,15 +7,15 @@ const os = require("node:os");
 const path = require("node:path");
 const { spawnSync } = require("node:child_process");
 const test = require("node:test");
-const { Webroot, dev, start } = require("astrohp");
+const { Webroot, dev, start } = require("astralhp");
 const { validateConfig } = require("../dist/config-loader.js");
 
-const cli = path.resolve(__dirname, "../astrohp");
+const cli = path.resolve(__dirname, "../astralhp");
 
 function fixture(t, config) {
-	const project = fs.mkdtempSync(path.join(os.tmpdir(), "astrohp-test-webroots-"));
+	const project = fs.mkdtempSync(path.join(os.tmpdir(), "astralhp-test-webroots-"));
 	t.after(() => fs.rmSync(project, { recursive: true, force: true }));
-	fs.writeFileSync(path.join(project, "astrohp.mts"), `export const config = ${JSON.stringify(config)};`);
+	fs.writeFileSync(path.join(project, "astralhp.mts"), `export const config = ${JSON.stringify(config)};`);
 	return project;
 }
 
@@ -29,7 +29,7 @@ async function freePort() {
 
 test("discovers .htaccess webroots in descendants and ancestors without treating nested rules as sites", async t => {
 	const project = fixture(t, {});
-	fs.rmSync(path.join(project, "astrohp.mts"));
+	fs.rmSync(path.join(project, "astralhp.mts"));
 	for (const name of ["first", "first/private", "second", "node_modules/ignored", ".git/ignored", ".caches/ignored"]) {
 		fs.mkdirSync(path.join(project, name), { recursive: true });
 		fs.writeFileSync(path.join(project, name, ".htaccess"), "");
@@ -46,7 +46,7 @@ test("discovers .htaccess webroots in descendants and ancestors without treating
 	}
 	assert.deepEqual(await Webroot.requireOne(path.join(project, "first/private")), sites[0]);
 	assert.deepEqual(await Webroot.resolve("first", project), sites[0]);
-	await assert.rejects(Webroot.requireOne(project), /Found multiple AstroHP webroots/);
+	await assert.rejects(Webroot.requireOne(project), /Found multiple AstralHP webroots/);
 });
 
 test("explicit configurations take precedence over .htaccess markers", async t => {
@@ -64,25 +64,25 @@ test("explicit configurations take precedence over .htaccess markers", async t =
 		["first", "apache-proxy"], ["second", "node"], ["third", "apache-static"],
 	]);
 	assert.equal(sites[0].port, 9001);
-	assert.equal(sites[0].configFile, path.join(project, "astrohp.mts"));
+	assert.equal(sites[0].configFile, path.join(project, "astralhp.mts"));
 	assert.equal(sites[2].configFile, null);
 	assert.deepEqual(await Webroot.resolve(path.join(project, "first")), sites[0]);
 });
 
 test("an empty .htaccess is sufficient for CLI discovery, builds, and local development", async t => {
 	const project = fixture(t, {});
-	fs.rmSync(path.join(project, "astrohp.mts"));
+	fs.rmSync(path.join(project, "astralhp.mts"));
 	const root = path.join(project, "www");
 	fs.mkdirSync(root);
 	fs.writeFileSync(path.join(root, ".htaccess"), "");
 	fs.writeFileSync(path.join(root, "index.astro"), "<h1>Zero config</h1>");
 	const listed = spawnSync(process.execPath, [cli], { cwd: project, encoding: "utf8" });
 	assert.equal(listed.status, 0, listed.stderr);
-	assert.equal(listed.stdout.trim(), "AstroHP webroots:\n  www");
+	assert.equal(listed.stdout.trim(), "AstralHP webroots:\n  www");
 	const built = spawnSync(process.execPath, [cli, "build"], { cwd: project, encoding: "utf8" });
 	assert.equal(built.status, 0, built.stderr);
 	assert.match(fs.readFileSync(path.join(root, ".caches/dist/index.html"), "utf8"), /Zero config/);
-	assert.match(fs.readFileSync(path.join(root, ".htaccess"), "utf8"), /BEGIN ASTROHP/);
+	assert.match(fs.readFileSync(path.join(root, ".htaccess"), "utf8"), /BEGIN ASTRALHP/);
 	assert.equal(fs.existsSync(path.join(root, ".caches/dist/.server")), false);
 	const site = await Webroot.requireOne(project);
 	const port = await freePort();
@@ -120,11 +120,11 @@ test("expands paths and overrides, resolves selected webroots, and keeps stable 
 		assert.equal(site.dist, path.join(site.path, ".caches/dist"));
 		assert.deepEqual(await Webroot.resolve(site.path), site);
 	}
-	await assert.rejects(Webroot.requireOne(project), /Found multiple AstroHP webroots/);
+	await assert.rejects(Webroot.requireOne(project), /Found multiple AstralHP webroots/);
 	// A second config avoids module-import caching while using the same project directory.
-	fs.rmSync(path.join(project, "astrohp.mts"));
+	fs.rmSync(path.join(project, "astralhp.mts"));
 	fs.writeFileSync(
-		path.join(project, ".astrohp.mts"),
+		path.join(project, ".astralhp.mts"),
 		'export const config = { webroot: ["./second/www", "first/../first/www", "third"] };',
 	);
 	const reordered = await Webroot.search(project);
@@ -143,16 +143,16 @@ test("rejects malformed multi-webroot configurations", () => {
 	]) {
 		assert.throws(() => validateConfig({ webroot: [{ webroot: "www", ...entry }] }, "config"));
 	}
-	assert.throws(() => new Webroot({ webroot: ["www"] }, "/tmp/astrohp.mts"), /represents one directory/);
+	assert.throws(() => new Webroot({ webroot: ["www"] }, "/tmp/astralhp.mts"), /represents one directory/);
 });
 
 test("rejects duplicate webroots within an array and across configs", async t => {
 	const project = fixture(t, { webroot: ["www", "./www/"] });
 	await assert.rejects(Webroot.search(project), /configured more than once/);
-	fs.rmSync(path.join(project, "astrohp.mts"));
-	fs.writeFileSync(path.join(project, ".astrohp.mts"), 'export const config = { webroot: ["www"] };');
+	fs.rmSync(path.join(project, "astralhp.mts"));
+	fs.writeFileSync(path.join(project, ".astralhp.mts"), 'export const config = { webroot: ["www"] };');
 	fs.mkdirSync(path.join(project, "www"));
-	fs.writeFileSync(path.join(project, "www/astrohp.mts"), "export const config = {};");
+	fs.writeFileSync(path.join(project, "www/astralhp.mts"), "export const config = {};");
 	await assert.rejects(Webroot.search(project), /configured by both/);
 });
 
@@ -169,10 +169,10 @@ test("CLI lists and builds array entries, then serves both through a shared prox
 	}
 	const listed = spawnSync(process.execPath, [cli], { cwd: project, encoding: "utf8" });
 	assert.equal(listed.status, 0, listed.stderr);
-	assert.equal(listed.stdout.trim(), "AstroHP webroots:\n  first\n  second");
+	assert.equal(listed.stdout.trim(), "AstralHP webroots:\n  first\n  second");
 	const ambiguous = spawnSync(process.execPath, [cli, "dev"], { cwd: project, encoding: "utf8" });
 	assert.equal(ambiguous.status, 1);
-	assert.match(ambiguous.stderr, /Found multiple AstroHP webroots; specify one/);
+	assert.match(ambiguous.stderr, /Found multiple AstralHP webroots; specify one/);
 	const built = spawnSync(process.execPath, [cli, "build"], { cwd: project, encoding: "utf8" });
 	assert.equal(built.status, 0, built.stderr);
 	const sites = await Webroot.search(project);
@@ -188,7 +188,7 @@ test("CLI lists and builds array entries, then serves both through a shared prox
 	try {
 		for (const site of sites) {
 			const response = await fetch(`http://127.0.0.1:${port}/live`, {
-				headers: { "X-AstroHP-Document-Root": site.path },
+				headers: { "X-AstralHP-Document-Root": site.path },
 			});
 			assert.equal(response.status, 200);
 			assert.match(await response.text(), new RegExp(`${path.basename(site.path)} dynamic`));

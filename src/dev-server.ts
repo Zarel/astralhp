@@ -8,14 +8,14 @@ export interface DevServerOptions {
 	port?: number;
 }
 
-export interface AstroHPDevServer {
+export interface AstralHPDevServer {
 	stop(): Promise<void>;
 }
 
 function isCompiledAssetRequest(url: string | undefined): boolean {
 	if (!url) return false;
 	try {
-		const pathname = new URL(url, "http://astrohp.local").pathname;
+		const pathname = new URL(url, "http://astralhp.local").pathname;
 		return /\.(?:m?js|css)(?:\.map)?$/i.test(pathname) || /\/(?:_assets|_chunks)\//.test(pathname);
 	} catch {
 		return false;
@@ -24,7 +24,7 @@ function isCompiledAssetRequest(url: string | undefined): boolean {
 
 export function staticFiles(webroot: Webroot): vite.Plugin {
 	return {
-		name: "astrohp:static-files",
+		name: "astralhp:static-files",
 		enforce: "pre",
 		configureServer(server) {
 			server.middlewares.use((request, response, next) => {
@@ -58,7 +58,7 @@ export async function startDev(
 	webroot: Webroot,
 	config: astro.AstroInlineConfig,
 	options: DevServerOptions = {},
-): Promise<AstroHPDevServer> {
+): Promise<AstralHPDevServer> {
 	process.env.ASTRO_TELEMETRY_DISABLED ||= "1";
 	const { dev } = await import("astro");
 	return dev({

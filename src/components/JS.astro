@@ -6,47 +6,47 @@ type Props = Omit<HTMLAttributes<"script">, "src" | "type"> & {
 	/** Embed the bundle in a module script element. */
 	inline?: boolean;
 	/** @internal Prepared bundle contents. */
-	__astrohpContent?: string;
+	__astralhpContent?: string;
 	/** @internal Prepared stylesheets imported by the bundle. */
-	__astrohpInlineStyles?: string[];
-	/** @internal Filled by AstroHP's build integration. */
-	__astrohpStyles?: string[];
+	__astralhpInlineStyles?: string[];
+	/** @internal Filled by AstralHP's build integration. */
+	__astralhpStyles?: string[];
 };
 
 const {
 	src,
 	inline = false,
-	__astrohpContent,
-	__astrohpInlineStyles,
-	__astrohpStyles,
+	__astralhpContent,
+	__astralhpInlineStyles,
+	__astralhpStyles,
 	...attributes
 } = Astro.props;
-if (!__astrohpStyles) {
+if (!__astralhpStyles) {
 	throw new Error(
-		'Import JS directly from "astrohp/components" and use a literal src',
+		'Import JS directly from "astralhp/components" and use a literal src',
 	);
 }
-if (inline && __astrohpContent === undefined) {
+if (inline && __astralhpContent === undefined) {
 	throw new Error(
-		'Import JS directly from "astrohp/components" and use a literal src',
+		'Import JS directly from "astralhp/components" and use a literal src',
 	);
 }
 ---
 {inline ? (
 	<>
-		{__astrohpInlineStyles?.map(css => (
+		{__astralhpInlineStyles?.map(css => (
 			<style is:inline nonce={attributes.nonce} set:html={css} />
 		))}
 		<script
 			is:inline
 			{...attributes}
 			type="module"
-			set:html={__astrohpContent}
+			set:html={__astralhpContent}
 		></script>
 	</>
 ) : (
 	 <>
-		 {__astrohpStyles.map(href => <link rel="stylesheet" href={href} />)}
+		 {__astralhpStyles.map(href => <link rel="stylesheet" href={href} />)}
 		 <script is:inline {...attributes} type="module" src={src}></script>
 	 </>
  )}

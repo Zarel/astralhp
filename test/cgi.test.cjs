@@ -6,10 +6,10 @@ const os = require("node:os");
 const path = require("node:path");
 const { spawnSync } = require("node:child_process");
 const test = require("node:test");
-const { build, Webroot } = require("astrohp");
+const { build, Webroot } = require("astralhp");
 const { cgiRequest } = require("../dist/cgi-server/cgi-runtime.js");
 const { apacheBlock } = require("../dist/apache.js");
-const { AstroHPServer } = require("../dist/live-server.js");
+const { AstralHPServer } = require("../dist/live-server.js");
 
 const environment = {
 	REQUEST_METHOD: "GET",
@@ -43,7 +43,7 @@ test("CGI reconstructs the public URL and authoritative content headers", () => 
 });
 
 test("CGI reads exactly CONTENT_LENGTH bytes and preserves binary input", async t => {
-	const root = fs.mkdtempSync(path.join(os.tmpdir(), "astrohp-cgi-body-"));
+	const root = fs.mkdtempSync(path.join(os.tmpdir(), "astralhp-cgi-body-"));
 	t.after(() => fs.rmSync(root, { recursive: true, force: true }));
 	const filename = path.join(root, "body");
 	fs.writeFileSync(filename, Buffer.from([0, 255, 128, 13, 10, 42]));
@@ -63,7 +63,9 @@ test("CGI Apache rules preserve static routing without requiring proxy modules",
 	assert.doesNotMatch(block, /ProxyPreserveHost|RequestHeader|127\.0\.0\.1/);
 	assert.doesNotMatch(apacheBlock(0, [], "apache-cgi"), /ExecCGI|cgi-script/);
 	assert.throws(() => new Webroot({ webroot: "/tmp", runtimePath: "/bin/bun\ninvalid" }), /runtimePath/);
-	assert.throws(() => new AstroHPServer([new Webroot({ webroot: "/tmp", adapter: "apache-cgi" })]), /run under Apache/);
+	assert.throws(
+		() => new AstralHPServer([new Webroot({ webroot: "/tmp", adapter: "apache-cgi" })]), /run under Apache/,
+	);
 });
 
 for (const runtime of ["Node", "Bun"]) {
@@ -78,10 +80,10 @@ for (const runtime of ["Node", "Bun"]) {
 			assert.equal(bun.status, 0, bun.stderr);
 			runtimePath = bun.stdout;
 		}
-		const root = fs.mkdtempSync(path.resolve(__dirname, "../.astrohp-test-cgi-"));
+		const root = fs.mkdtempSync(path.resolve(__dirname, "../.astralhp-test-cgi-"));
 		t.after(() => fs.rmSync(root, { recursive: true, force: true }));
 		fs.writeFileSync(
-			path.join(root, "astrohp.mts"),
+			path.join(root, "astralhp.mts"),
 			`export const config = ${
 				JSON.stringify({ webroot: ".", adapter: "apache-cgi", runtimePath, prerender: false })
 			};`,

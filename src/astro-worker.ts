@@ -10,12 +10,12 @@ import { AssetBundles } from "./bundles.js";
 import { cgiAdapter } from "./cgi-adapter.js";
 import { type DevServerOptions, startDev } from "./dev-server.js";
 import { es3Plugin } from "./es3.js";
-import { type AstroHPServer, type LiveServerOptions, serverPort, startLive } from "./live-server.js";
+import { type AstralHPServer, type LiveServerOptions, serverPort, startLive } from "./live-server.js";
 import {
-	type AstrohpConfigOptions,
-	astrohpIntegration,
-	type AstrohpPage,
-	type AstrohpResolvedRoutes,
+	type AstralHPConfigOptions,
+	astralhpIntegration,
+	type AstralHPPage,
+	type AstralHPResolvedRoutes,
 	Webroot,
 } from "./webroot.js";
 
@@ -51,7 +51,7 @@ function webrootFrom(data: SerializedWebroot): Webroot {
 
 function outsideRootEntrypoints(
 	webroot: Webroot,
-	pages: AstrohpPage[],
+	pages: AstralHPPage[],
 ): vite.Plugin {
 	const nodeImageEndpoint = fileURLToPath(
 		import.meta.resolve("astro/assets/endpoint/node"),
@@ -65,13 +65,13 @@ function outsideRootEntrypoints(
 	);
 
 	return {
-		name: "astrohp:outside-root-entrypoints",
+		name: "astralhp:outside-root-entrypoints",
 		enforce: "pre",
 		resolveId(source) {
 			if (
 				source === "astro" || source.startsWith("astro/") ||
 				source === "@astrojs/node" || source.startsWith("@astrojs/node/") ||
-				source === "astrohp/components"
+				source === "astralhp/components"
 			) {
 				try {
 					return fileURLToPath(import.meta.resolve(source));
@@ -84,7 +84,7 @@ function outsideRootEntrypoints(
 
 function astroConfig(
 	webroot: Webroot,
-	options: AstrohpConfigOptions = {},
+	options: AstralHPConfigOptions = {},
 	legacySources: Set<string> = new Set(),
 	bundles: AssetBundles = new AssetBundles(webroot),
 	legacyCache: ScriptCache = new Map(),
@@ -114,7 +114,7 @@ function astroConfig(
 		devToolbar: {
 			enabled: false,
 		},
-		integrations: [astrohpIntegration(pages, {
+		integrations: [astralhpIntegration(pages, {
 			...options,
 			entrypointRoot: webroot.projectCaches,
 			staticOnly,
@@ -129,7 +129,7 @@ function astroConfig(
 				},
 			},
 			define: {
-				"import.meta.env.ASTROHP_WEBROOT": JSON.stringify(webroot.path),
+				"import.meta.env.ASTRALHP_WEBROOT": JSON.stringify(webroot.path),
 			},
 			plugins: [
 				bundles.plugin(legacySources),
@@ -143,7 +143,7 @@ function astroConfig(
 function send(message: object): Promise<void> {
 	return new Promise((resolve, reject) => {
 		if (!process.send) {
-			reject(new Error("AstroHP worker requires an IPC channel"));
+			reject(new Error("AstralHP worker requires an IPC channel"));
 			return;
 		}
 		process.send(message, error => error ? reject(error) : resolve());
@@ -185,9 +185,9 @@ async function run(request: WorkerRequest): Promise<void> {
 	switch (request.operation) {
 		case "build": {
 			if (webroots.length !== 1) {
-				throw new Error("An AstroHP build worker requires exactly one webroot");
+				throw new Error("An AstralHP build worker requires exactly one webroot");
 			}
-			let resolvedRoutes: AstrohpResolvedRoutes | undefined;
+			let resolvedRoutes: AstralHPResolvedRoutes | undefined;
 			const legacySources = new Set<string>();
 			const legacyCache: ScriptCache = new Map();
 			const bundles = new AssetBundles(webroots[0]!);
@@ -216,7 +216,7 @@ async function run(request: WorkerRequest): Promise<void> {
 		}
 		case "dev": {
 			if (webroots.length !== 1) {
-				throw new Error("An AstroHP dev worker requires exactly one webroot");
+				throw new Error("An AstralHP dev worker requires exactly one webroot");
 			}
 			const options = request.options as DevServerOptions | undefined;
 			const server = await startDev(webroots[0]!, astroConfig(webroots[0]!), {
@@ -234,7 +234,7 @@ async function run(request: WorkerRequest): Promise<void> {
 			);
 			close = () =>
 				Promise.all(
-					servers.map((server: AstroHPServer) => server.close()),
+					servers.map((server: AstralHPServer) => server.close()),
 				).then(() => {});
 			await send({ type: "ready" });
 			break;

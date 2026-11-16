@@ -17,6 +17,6 @@ function h(
 	return element;
 }
 
-document.body.appendChild(<div>Hello from AstroHP</div>);
+document.body.appendChild(<div>Hello from AstralHP</div>);
 
 export const THIS_IS_A_GLOBAL = true;
