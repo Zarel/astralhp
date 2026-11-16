@@ -168,7 +168,7 @@ Compatible with both Node and Bun, although we strongly recommend Bun because
 startup times are important if you're going to spawn a new process on every
 pageview.
 
-Use a Node version that meets AstroHP's requirements (currently 22.18+).
+Use a Node version that meets AstroHP's requirements (currently 22.23.4+).
 
 The host needs to support:
 

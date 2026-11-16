@@ -52,33 +52,33 @@
 		"typecheck": "tsc"
 	},
 	"dependencies": {
-		"@astrojs/compiler-rs": "^0.3.1",
-		"@astrojs/node": "^11.0.3",
-		"@babel/core": "^7.26.10",
-		"@babel/plugin-transform-react-jsx": "^7.25.9",
-		"@babel/plugin-transform-strict-mode": "^7.25.9",
-		"@babel/preset-env": "^7.26.9",
-		"@babel/preset-typescript": "^7.27.0",
-		"@types/pg": "^8.20.0",
-		"astro": "^7.1.5",
+		"@astrojs/compiler-rs": "^0.3.2",
+		"@astrojs/node": "^11.1.13",
+		"@babel/core": "^7.29.13",
+		"@babel/plugin-transform-react-jsx": "^7.29.7",
+		"@babel/plugin-transform-strict-mode": "^7.29.7",
+		"@babel/preset-env": "^7.29.14",
+		"@babel/preset-typescript": "^7.29.7",
+		"@types/pg": "^8.23.1",
+		"astro": "^7.4.12",
 		"babel-plugin-remove-import-export": "^1.1.1",
 		"css-tree": "^3.2.1",
-		"magic-string": "^1.1.0",
-		"mysql2": "^3.23.0",
-		"pg": "^8.22.0",
+		"magic-string": "^1.4.5",
+		"mysql2": "^3.24.6",
+		"pg": "^8.23.1",
 		"sass": "^1.108.2"
 	},
 	"devDependencies": {
-		"@astrojs/check": "^0.9.10",
+		"@astrojs/check": "^0.9.12",
 		"@types/babel__core": "^7.20.5",
 		"@types/css-tree": "^3.2.0",
-		"@types/node": "^24.13.3",
+		"@types/node": "^24.19.2",
 		"dprint": "^0.64.3",
 		"typescript": "^6.0.3",
-		"vite": "^8.1.5"
+		"vite": "^8.3.8"
 	},
 	"engines": {
-		"node": ">=22.18.0"
+		"node": ">=22.23.4"
 	},
 	"allowScripts": {
 		"dprint@0.55.2": true,
