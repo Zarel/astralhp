@@ -2,6 +2,7 @@
 	"name": "astrohp",
 	"version": "0.0.1",
 	"description": "Astro with PHP-style routing",
+	"homepage": "https://github.com/Zarel/astrohp",
 	"repository": {
 		"type": "git",
 		"url": "git+https://github.com/Zarel/astrohp.git"
