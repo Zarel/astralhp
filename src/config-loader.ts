@@ -42,31 +42,28 @@ export function validateConfig(value: any, filename: string): Config {
 	}
 
 	for (const key of Object.keys(value)) {
-		if (key !== "webroot" && key !== "webroots" && key !== "adapter" && key !== "port" && key !== "runtimePath" && key !== "prerender") {
+		if (key !== "webroot" && key !== "adapter" && key !== "port" && key !== "runtimePath" && key !== "prerender") {
 			throw new Error(`Unknown AstroHP configuration option: ${key}`);
 		}
 	}
-	if (value.webroots !== undefined) {
-		if (value.webroot !== undefined) throw new Error("Specify either webroot or webroots, not both");
-		if (!Array.isArray(value.webroots) || !value.webroots.length) {
-			throw new Error("AstroHP configuration option webroots must be a non-empty array");
+	if (Array.isArray(value.webroot)) {
+		if (!value.webroot.length) {
+			throw new Error("AstroHP configuration option webroot must not be an empty array");
 		}
-		for (const [index, entry] of value.webroots.entries()) {
-			const label = `${filename}: webroots[${index}]`;
+		for (const [index, entry] of value.webroot.entries()) {
+			const label = `${filename}: webroot[${index}]`;
 			const options = typeof entry === "string" ? { webroot: entry } : entry;
 			if (!options || typeof options !== "object" || Array.isArray(options) ||
 				typeof options.webroot !== "string" || !options.webroot) {
 				throw new Error(`${label} must be a non-empty path or an object with a non-empty webroot`);
 			}
-			if ("webroots" in options) throw new Error(`${label} cannot contain nested webroots`);
 			validateConfig(options, label);
 		}
-	}
-	if (
+	} else if (
 		value.webroot !== undefined &&
 		(typeof value.webroot !== "string" || !value.webroot)
 	) {
-		throw new Error("AstroHP configuration option webroot must be a non-empty string");
+		throw new Error("AstroHP configuration option webroot must be a non-empty string or array");
 	}
 	if (
 		value.adapter !== undefined &&
@@ -159,15 +156,16 @@ async function importConfig(filename: string): Promise<Config> {
 }
 
 async function loadConfig(filename: string): Promise<LoadedWebrootConfig[]> {
-	const { webroots, ...defaults } = await importConfig(filename);
-	const entries = webroots === undefined ? [defaults] : webroots.map(entry => ({
+	const { webroot, ...defaults } = await importConfig(filename);
+	const multiple = typeof webroot !== "string" && webroot !== undefined;
+	const entries = multiple ? webroot.map(entry => ({
 		...defaults,
 		...(typeof entry === "string" ? { webroot: entry } : entry),
-	}));
+	})) : [{ ...defaults, webroot: webroot ?? "." }];
 	return entries.map(config => ({
 		config: { ...config, webroot: path.resolve(path.dirname(filename), config.webroot ?? ".") },
 		configFile: filename,
-		isolatedCache: webroots !== undefined,
+		isolatedCache: multiple,
 	}));
 }
 

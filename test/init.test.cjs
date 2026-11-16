@@ -142,9 +142,9 @@ test("init refuses existing config files and dangling symlinks without executing
 	}
 });
 
-test("config creation escapes data, supports webroots arrays, and never overwrites", async t => {
+test("config creation escapes data, supports webroot arrays, and never overwrites", async t => {
 	const project = fixture(t);
-	const config = { adapter: "apache-proxy", webroots: ['a"quote', { webroot: "`template${literal}", port: 9002 }] };
+	const config = { adapter: "apache-proxy", webroot: ['a"quote', { webroot: "`template${literal}", port: 9002 }] };
 	const filename = createConfig(project, config);
 	assert.deepEqual(await readConfig(project), config);
 	const source = fs.readFileSync(filename, "utf8");

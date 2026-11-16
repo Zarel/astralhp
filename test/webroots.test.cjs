@@ -52,7 +52,7 @@ test("discovers .htaccess webroots in descendants and ancestors without treating
 test("explicit configurations take precedence over .htaccess markers", async t => {
 	const project = fixture(t, {
 		adapter: "apache-proxy", port: 9001,
-		webroots: ["first", { webroot: "second", adapter: "node" }],
+		webroot: ["first", { webroot: "second", adapter: "node" }],
 	});
 	for (const name of [".", "first", "first/private", "second", "third"]) {
 		fs.mkdirSync(path.join(project, name), { recursive: true });
@@ -98,7 +98,7 @@ test("an empty .htaccess is sufficient for CLI discovery, builds, and local deve
 test("expands paths and overrides, resolves selected webroots, and keeps stable isolated caches", async t => {
 	const project = fixture(t, {
 		adapter: "apache-proxy", port: 9001, runtimePath: process.execPath, prerender: false,
-		webroots: ["first/www", { webroot: "second/www", adapter: "apache-cgi", port: 9002, prerender: true }],
+		webroot: ["first/www", { webroot: "second/www", adapter: "apache-cgi", port: 9002, prerender: true }],
 	});
 	for (const directory of ["first/www", "second/www"]) fs.mkdirSync(path.join(project, directory), { recursive: true });
 	const sites = await Webroot.search(project);
@@ -120,7 +120,7 @@ test("expands paths and overrides, resolves selected webroots, and keeps stable 
 	// A second config avoids module-import caching while using the same project directory.
 	fs.rmSync(path.join(project, "astrohp.mts"));
 	fs.writeFileSync(path.join(project, ".astrohp.mts"),
-		'export const config = { webroots: ["./second/www", "first/../first/www", "third"] };');
+		'export const config = { webroot: ["./second/www", "first/../first/www", "third"] };');
 	const reordered = await Webroot.search(project);
 	assert.deepEqual(reordered.map(site => site.adapter), ["apache-static", "apache-static", "apache-static"]);
 	assert.equal(reordered[0].projectCaches, sites[1].projectCaches);
@@ -128,29 +128,29 @@ test("expands paths and overrides, resolves selected webroots, and keeps stable 
 });
 
 test("rejects malformed multi-webroot configurations", () => {
-	for (const value of [null, "www", [], [""], [null], [42], [{}], [{ webroot: "" }]]) {
-		assert.throws(() => validateConfig({ webroots: value }, "config"), /webroots/);
+	for (const value of [null, 42, "", {}, [], [""], [null], [42], [{}], [{ webroot: "" }], [["www"]]]) {
+		assert.throws(() => validateConfig({ webroot: value }, "config"), /webroot/);
 	}
-	assert.throws(() => validateConfig({ webroot: "www", webroots: ["other"] }, "config"), /not both/);
-	assert.throws(() => validateConfig({ webroots: [{ webroot: "www", webroots: ["other"] }] }, "config"), /nested/);
+	assert.throws(() => validateConfig({ webroots: ["other"] }, "config"), /Unknown AstroHP configuration option: webroots/);
+	assert.throws(() => validateConfig({ webroot: [{ webroot: ["other"] }] }, "config"), /non-empty webroot/);
 	for (const entry of [{ adapter: "unknown" }, { port: -1 }, { runtimePath: "bun" }, { prerender: "false" }, { typo: true }]) {
-		assert.throws(() => validateConfig({ webroots: [{ webroot: "www", ...entry }] }, "config"));
+		assert.throws(() => validateConfig({ webroot: [{ webroot: "www", ...entry }] }, "config"));
 	}
-	assert.throws(() => new Webroot({ webroots: ["www"] }, "/tmp/astrohp.mts"), /represents one directory/);
+	assert.throws(() => new Webroot({ webroot: ["www"] }, "/tmp/astrohp.mts"), /represents one directory/);
 });
 
 test("rejects duplicate webroots within an array and across configs", async t => {
-	const project = fixture(t, { webroots: ["www", "./www/"] });
+	const project = fixture(t, { webroot: ["www", "./www/"] });
 	await assert.rejects(Webroot.search(project), /configured more than once/);
 	fs.rmSync(path.join(project, "astrohp.mts"));
-	fs.writeFileSync(path.join(project, ".astrohp.mts"), 'export const config = { webroots: ["www"] };');
+	fs.writeFileSync(path.join(project, ".astrohp.mts"), 'export const config = { webroot: ["www"] };');
 	fs.mkdirSync(path.join(project, "www"));
 	fs.writeFileSync(path.join(project, "www/astrohp.mts"), "export const config = {};");
 	await assert.rejects(Webroot.search(project), /configured by both/);
 });
 
 test("CLI lists and builds array entries, then serves both through a shared proxy listener", async t => {
-	const project = fixture(t, { adapter: "apache-proxy", webroots: ["first", { webroot: "second" }] });
+	const project = fixture(t, { adapter: "apache-proxy", webroot: ["first", { webroot: "second" }] });
 	for (const name of ["first", "second"]) {
 		fs.mkdirSync(path.join(project, name));
 		fs.writeFileSync(path.join(project, name, "index.astro"), `---\nexport const prerender = true;\n---\n${name} static`);
@@ -185,7 +185,7 @@ test("CLI lists and builds array entries, then serves both through a shared prox
 });
 
 test("selected webroots can run concurrent dev servers with separate Astro and Vite caches", async t => {
-	const project = fixture(t, { webroots: ["first", "second"] });
+	const project = fixture(t, { webroot: ["first", "second"] });
 	for (const name of ["first", "second"]) {
 		fs.mkdirSync(path.join(project, name));
 		fs.writeFileSync(path.join(project, name, "index.astro"), `${name} development`);

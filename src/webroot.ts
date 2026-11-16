@@ -112,7 +112,7 @@ export class Webroot {
 
 	constructor(config: WebrootConfig, configFile: string | null = null, isolatedCache: boolean = false) {
 		const validated = validateConfig(config, configFile ?? "Webroot configuration");
-		if (validated.webroots !== undefined) throw new Error("A Webroot represents one directory; use Webroot.search() to load webroots");
+		if (Array.isArray(validated.webroot)) throw new Error("A Webroot represents one directory; use Webroot.search() to load webroots");
 		this.configFile = configFile === null ? null : path.resolve(configFile);
 		if (config.webroot) {
 			if (!this.configFile && !path.isAbsolute(config.webroot)) {
