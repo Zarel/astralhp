@@ -19,7 +19,7 @@ export function cgiAdapter(): AstroIntegration {
 				configure({
 					...context,
 					setAdapter(adapter) {
-						const { previewEntrypoint, ...options } = adapter;
+						const { previewEntrypoint: _previewEntrypoint, ...options } = adapter;
 						context.setAdapter({
 							...options,
 							name: "astrohp/apache-cgi",

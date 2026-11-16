@@ -78,7 +78,7 @@ test("JS bundles use stable paths, include dependencies and CSS, and render on s
 	const url = bundleURL(html);
 	assert.match(html, /type="module"/);
 	assert.match(html, /data-test="bundled"/);
-	const css = html.match(/href="(\/scripts\/_assets\/[^\"]+\.css)"/);
+	const css = html.match(/href="(\/scripts\/_assets\/[^"]+\.css)"/);
 	assert(css, html);
 	assert(fs.existsSync(path.join(site.dist, css[1])));
 	assert(!fs.existsSync(path.join(site.dist, "scripts/unused.js")));
@@ -197,7 +197,7 @@ export const prerender = false;
 		const html = await (await fetch(`${base}/nested/live`)).text();
 		await check(html);
 		assert.equal((html.match(/<script\b/g) ?? []).length, 1);
-		const lazyURL = html.match(/import\("([^\"]+_chunks\/lazy-[^\"]+)"/)[1];
+		const lazyURL = html.match(/import\("([^"]+_chunks\/lazy-[^"]+)"/)[1];
 		const lazy = await fetch(base + lazyURL);
 		assert.equal(lazy.status, 200);
 		assert.match(await lazy.text(), /lazy-one/);
