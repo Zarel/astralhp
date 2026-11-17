@@ -1,3 +1,4 @@
+import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { createInterface } from "node:readline";
@@ -15,10 +16,45 @@ function stat(filename: string): fs.Stats | undefined {
 	}
 }
 
+function packageDirectory(directory: string): string {
+	let current = directory;
+	while (true) {
+		if (stat(path.join(current, "package.json")) || stat(path.join(current, "node_modules"))?.isDirectory()) {
+			return current;
+		}
+		const parent = path.dirname(current);
+		if (parent === current) return directory;
+		current = parent;
+	}
+}
+
 function booleanAnswer(answer: string): boolean {
 	if (["y", "yes", "true"].includes(answer.toLowerCase())) return true;
 	if (["n", "no", "false"].includes(answer.toLowerCase())) return false;
 	throw new Error("Please answer yes or no.");
+}
+
+async function install(directory: string): Promise<void> {
+	console.log("\nInstalling AstralHP...\n");
+	try {
+		await new Promise<void>((resolve, reject) => {
+			const child = spawn("npm", ["install", "--save-dev", "astralhp", "--prefix", "."], {
+				cwd: directory,
+				stdio: "inherit",
+				shell: process.platform === "win32",
+			});
+			child.once("error", reject);
+			child.once("close", (code, signal) => {
+				if (code === 0) resolve();
+				else reject(new Error(signal ? `npm was terminated by ${signal}` : `npm exited with status ${code}`));
+			});
+		});
+	} catch (error) {
+		throw new Error(
+			`Installation failed: ${(error as Error).message}. Setup files have been kept. ` +
+				`Run "npm install --save-dev astralhp" in ${directory} to retry.`,
+		);
+	}
 }
 
 export async function init(directory: string = process.cwd()): Promise<void> {
@@ -93,24 +129,39 @@ export async function init(directory: string = process.cwd()): Promise<void> {
 		}
 		const staticOnly = adapter === "apache-static";
 		const apache = adapter !== "node";
+		const displayPath = (filename: string): string => path.relative(directory, filename) || ".";
+
+		console.log("\nReady. This will:");
+
 		const root = path.resolve(directory, webroot);
 		const apacheFile = path.resolve(directory, webroot, ".htaccess");
-		const displayPath = (filename: string): string => path.relative(directory, filename) || ".";
-		console.log("\nReady. This will:");
 		console.log(`- ${stat(root) ? "use existing" : "create"} \`${displayPath(root)}\``);
 		if (apache) {
 			const existing = stat(apacheFile);
 			if (existing && !existing.isFile()) throw new Error(`Expected a file: ${apacheFile}`);
 			console.log(`- ${existing ? "use existing" : "create"} \`${displayPath(apacheFile)}\``);
 		}
+
+		const installDirectory = packageDirectory(directory);
+		const packageFile = path.join(installDirectory, "package.json");
+		const existingPackage = stat(packageFile);
+		if (existingPackage && !existingPackage.isFile()) throw new Error(`Expected a file: ${packageFile}`);
+		console.log(
+			existingPackage ?
+				`- add astralhp to \`${displayPath(packageFile)}\` and install it` :
+				`- create \`${displayPath(packageFile)}\` with astralhp and install it`,
+		);
+
 		if (!staticOnly) {
 			console.log(`- create \`astralhp.mts\`, containing:\n${formatConfig(config)}`);
 		} else {
 			console.log();
 		}
+
 		if (!await ask("Go?", "yes", booleanAnswer)) {
 			throw new Cancelled();
 		}
+		readline.close();
 		assertCanCreateConfig(directory);
 		fs.mkdirSync(root, { recursive: true });
 		if (apache) {
@@ -126,6 +177,7 @@ export async function init(directory: string = process.cwd()): Promise<void> {
 			const filename = createConfig(directory, config);
 			console.log(`\nCreated ${filename}`);
 		}
+		await install(installDirectory);
 	} catch (error) {
 		if (!(error instanceof Cancelled)) throw error;
 		console.log("\nCancelled. No configuration written.");
