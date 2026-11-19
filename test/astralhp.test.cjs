@@ -998,15 +998,14 @@ test("rejects malformed managed Apache sections", () => {
 	);
 });
 
-test("documents all commands", () => {
+test("help lists the primary commands", () => {
 	const result = spawnSync(process.execPath, [path.resolve(__dirname, "../astralhp"), "--help"], {
 		encoding: "utf8",
 	});
 	assert.equal(result.status, 0);
-	assert.equal(
-		result.stdout.trim(),
-		"Usage: astralhp [<init|dev|build|start> [directory]]",
-	);
+	for (const command of ["init", "dev", "build", "serve", "start", "reload", "stop", "status", "help"]) {
+		assert.match(result.stdout, new RegExp(`\\bastralhp\\s+${command}\\b`));
+	}
 	assert.equal(result.stderr, "");
 });
 
@@ -1098,6 +1097,6 @@ test("does not load executable configuration for an invalid command", t => {
 		{ cwd: project, encoding: "utf8" },
 	);
 	assert.equal(result.status, 1);
-	assert.match(result.stderr, /Usage: astralhp/);
+	assert.match(result.stderr, /Usage:/);
 	assert.doesNotMatch(result.stderr, /configuration executed/);
 });

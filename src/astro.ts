@@ -59,13 +59,19 @@ export interface AstralHPProcess {
 	close(): Promise<void>;
 }
 
+export interface AstralHPLiveProcess extends AstralHPProcess {
+	readonly urls: readonly string[];
+	readonly startupMessage: string;
+}
+
 class WorkerProcess implements AstralHPProcess {
 	readonly finished: Promise<void>;
 	private readonly child: ChildProcess;
 	private readonly ready: Promise<unknown>;
 
-	constructor(request: WorkerRequest) {
+	constructor(request: WorkerRequest, cwd?: string) {
 		const child = fork(WORKER_ENTRYPOINT, [], {
+			cwd,
 			stdio: ["inherit", "inherit", "inherit", "ipc"],
 		});
 		this.child = child;
@@ -144,6 +150,7 @@ function run(
 	operation: WorkerRequest["operation"],
 	webroots: Webroot | readonly Webroot[],
 	options?: WorkerRequest["options"],
+	cwd?: string,
 ): WorkerProcess {
 	const roots: readonly Webroot[] = Array.isArray(webroots) ?
 		webroots :
@@ -153,7 +160,7 @@ function run(
 		operation,
 		webroots: roots.map(serializeWebroot),
 		...(options === undefined ? {} : { options }),
-	});
+	}, cwd);
 }
 
 export async function build(webroot: Webroot): Promise<string> {
@@ -174,9 +181,11 @@ export async function dev(
 
 export async function start(
 	webroots: Webroot | readonly Webroot[],
-	options: LiveServerOptions = {},
-): Promise<AstralHPProcess> {
-	const worker = run("start", webroots, options);
-	await worker.waitUntilReady();
-	return worker;
+	{ logStartup = true, ...options }: LiveServerOptions & { logStartup?: boolean } = {},
+	cwd?: string,
+): Promise<AstralHPLiveProcess> {
+	const worker = run("start", webroots, options, cwd);
+	const info = await worker.waitUntilReady() as Pick<AstralHPLiveProcess, "urls" | "startupMessage">;
+	if (logStartup) console.log(info.startupMessage);
+	return Object.assign(worker, info);
 }

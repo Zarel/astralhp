@@ -168,8 +168,8 @@ export class Webroot {
 		return Webroot.fromLoadedConfig(await requireConfig(directory));
 	}
 
-	static async resolve(root: string, workingDirectory: string = process.cwd()): Promise<Webroot> {
-		return Webroot.fromLoadedConfig(await resolveConfig(root, workingDirectory));
+	static async resolve(webroot: string, workingDirectory: string = process.cwd()): Promise<Webroot> {
+		return Webroot.fromLoadedConfig(await resolveConfig(webroot, workingDirectory));
 	}
 
 	private requestPathParts(requestUrl: string | undefined): string[] | null {

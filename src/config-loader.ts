@@ -236,10 +236,10 @@ export async function requireConfig(directory: string = process.cwd()): Promise<
 }
 
 export async function resolveConfig(
-	root: string,
+	webroot: string,
 	workingDirectory: string = process.cwd(),
 ): Promise<LoadedWebrootConfig> {
-	const requestedRoot = path.resolve(workingDirectory, root);
+	const requestedRoot = path.resolve(workingDirectory, webroot);
 	const matches = (await searchConfigs(requestedRoot))
 		.filter(config => config.config.webroot === requestedRoot);
 	if (matches.length > 1) throw new Error(`Found multiple configurations for ${requestedRoot}`);

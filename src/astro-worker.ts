@@ -10,7 +10,7 @@ import { AssetBundles } from "./bundles.js";
 import { cgiAdapter } from "./cgi-adapter.js";
 import { type DevServerOptions, startDev } from "./dev-server.js";
 import { es3Plugin } from "./es3.js";
-import { type AstralHPServer, type LiveServerOptions, serverPort, startLive } from "./live-server.js";
+import { type LiveServerOptions, serverPort, startLive } from "./live-server.js";
 import {
 	type AstralHPConfigOptions,
 	astralhpIntegration,
@@ -232,11 +232,17 @@ async function run(request: WorkerRequest): Promise<void> {
 				webroots,
 				request.options as LiveServerOptions | undefined,
 			);
-			close = () =>
-				Promise.all(
-					servers.map((server: AstralHPServer) => server.close()),
-				).then(() => {});
-			await send({ type: "ready" });
+			close = async () => {
+				await Promise.all(servers.map(server => server.close()));
+				process.exit(0);
+			};
+			await send({
+				type: "ready",
+				result: {
+					urls: servers.map(server => server.url),
+					startupMessage: servers.map(server => server.startupMessage).join("\n"),
+				},
+			});
 			break;
 		}
 	}
@@ -247,6 +253,7 @@ process.once("message", (request: WorkerRequest) => {
 		try {
 			await send({ type: "error", error: serializedError(error) });
 		} catch {}
+		if (request.operation === "start") process.exit(1);
 		process.exitCode = 1;
 		if (process.connected) process.disconnect();
 	});

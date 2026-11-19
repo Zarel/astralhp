@@ -70,7 +70,9 @@ npx astralhp start
 ```
 
 This server listens on `127.0.0.1:4321` by default. The port can be changed
-in the `astralhp.mts` config file.
+in the `astralhp.mts` config file. For how to manage a running server, use
+`npx astralhp help`. The relevant commands are `serve`, `reload`, `stop`,
+and `status`.
 
 ## `.astro` files
 
@@ -101,8 +103,8 @@ an array.
 
 In this case, you'll need to pass a webroot to `npx astralhp dev <webroot>`.
 
-`npx astralhp build` and `npx astralhp start` can also accept a webroot, but by
-default they will build and serve all webroots simultaneously.
+`build`, `serve`, and `start` also accept a webroot. By default they use all
+discovered webroots.
 
 ## Apache
 

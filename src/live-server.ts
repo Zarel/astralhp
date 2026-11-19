@@ -216,17 +216,22 @@ export class AstralHPServer {
 			});
 		});
 
+		return this;
+	}
+
+	get startupMessage(): string {
+		return [
+			`AstralHP running, listening to ${this.url}`,
+			...this.webroots.map(webroot => `Serving ${webroot.path}`),
+		].join("\n");
+	}
+
+	get url(): string {
 		const address = this.server.address() as AddressInfo;
 		const displayHost = address.address.includes(":") ?
 			`[${address.address}]` :
 			address.address;
-		const sites = this.webroots.length === 1 ?
-			"" :
-			` (${this.webroots.map(webroot => webroot.path).join(", ")})`;
-		console.log(
-			`astralhp live at http://${displayHost}:${address.port}/${sites}`,
-		);
-		return this;
+		return `http://${displayHost}:${address.port}/`;
 	}
 
 	async close(): Promise<void> {
