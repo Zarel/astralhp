@@ -156,32 +156,20 @@ export function findProjectDir(directory: string, configFile?: string | null): s
 	}
 }
 
-function findConfigMarkers(directory: string, configs: string[], apacheRoots: string[]): void {
-	const config = configIn(directory);
-	if (config) {
-		configs.push(config);
-		return;
-	}
-	try {
-		if (fs.statSync(path.join(directory, ".htaccess")).isFile()) apacheRoots.push(directory);
-	} catch (error) {
-		if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
-	}
-}
-
-function findChildConfigs(
-	directory: string,
-	configs: string[],
-	apacheRoots: string[],
-): void {
-	findConfigMarkers(directory, configs, apacheRoots);
-
+function findChildConfigs(directory: string, configs: string[], apacheRoots: string[]): void {
 	const entries = fs.readdirSync(directory, { withFileTypes: true })
 		.sort((a, b) => a.name.localeCompare(b.name));
 	for (const entry of entries) {
 		if (!entry.isDirectory() || IGNORED_DIRECTORIES.has(entry.name)) continue;
-		findChildConfigs(path.join(directory, entry.name), configs, apacheRoots);
+		const child = path.join(directory, entry.name);
+		const config = configIn(child);
+		if (config) {
+			configs.push(config);
+		} else {
+			findChildConfigs(child, configs, apacheRoots);
+		}
 	}
+	if (fs.statSync(path.join(directory, ".htaccess"), { throwIfNoEntry: false })?.isFile()) apacheRoots.push(directory);
 }
 
 async function importConfig(filename: string): Promise<Config> {
@@ -210,20 +198,7 @@ async function loadConfig(filename: string): Promise<LoadedWebrootConfig[]> {
 	}));
 }
 
-export async function searchConfigs(directory: string = process.cwd()): Promise<LoadedWebrootConfig[]> {
-	directory = path.resolve(directory);
-	const configs: string[] = [];
-	const apacheRoots: string[] = [];
-	findChildConfigs(directory, configs, apacheRoots);
-
-	let parent = path.dirname(directory);
-	while (parent !== directory) {
-		findConfigMarkers(parent, configs, apacheRoots);
-		const nextParent = path.dirname(parent);
-		if (nextParent === parent) break;
-		parent = nextParent;
-	}
-
+async function loadConfiguredWebroots(configs: string[]): Promise<LoadedWebrootConfig[]> {
 	const webroots = (await Promise.all(configs.map(loadConfig))).flat();
 	const webrootsByPath = new Map<string, LoadedWebrootConfig>();
 	for (const webroot of webroots) {
@@ -239,12 +214,34 @@ export async function searchConfigs(directory: string = process.cwd()): Promise<
 		}
 		webrootsByPath.set(webrootPath, webroot);
 	}
+	return webroots;
+}
+
+export async function searchConfigs(directory: string = process.cwd()): Promise<LoadedWebrootConfig[]> {
+	directory = path.resolve(directory);
+	const ancestors: string[] = [];
+	for (let current = directory;; current = path.dirname(current)) {
+		const config = configIn(current);
+		if (config) return loadConfiguredWebroots([config]);
+		if (current !== directory) ancestors.push(current);
+		if (current === path.dirname(current)) break;
+	}
+
+	const configs: string[] = [];
+	const apacheRoots: string[] = [];
+	findChildConfigs(directory, configs, apacheRoots);
+	if (configs.length) return loadConfiguredWebroots(configs);
+	for (const ancestor of ancestors) {
+		if (fs.statSync(path.join(ancestor, ".htaccess"), { throwIfNoEntry: false })?.isFile()) apacheRoots.push(ancestor);
+	}
+
+	const webroots: LoadedWebrootConfig[] = [];
 	const inside = (root: string, candidate: string): boolean => {
 		const relative = path.relative(root, candidate);
 		return relative !== ".." && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative);
 	};
 	// Consider outer roots first: nested .htaccess files usually configure a
-	// subdirectory of a site, rather than a separate site. Explicit configs win.
+	// subdirectory of a site, rather than a separate site.
 	for (
 		const root of apacheRoots.sort((a, b) => a.split(path.sep).length - b.split(path.sep).length || a.localeCompare(b))
 	) {

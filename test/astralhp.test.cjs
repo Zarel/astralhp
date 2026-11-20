@@ -318,7 +318,7 @@ test("loads typed configuration from the working directory", async t => {
 	assert.deepEqual(await Webroot.resolve(webroot, project), expected);
 });
 
-test("finds configurations in descendants and ancestor directories", async t => {
+test("uses the nearest config from a subdirectory and discovers projects when there is no enclosing config", async t => {
 	const project = fs.mkdtempSync(path.join(os.tmpdir(), "astralhp-test-"));
 	const workspace = path.join(project, "workspace");
 	const alpha = path.join(workspace, "sites", "alpha");
@@ -344,11 +344,11 @@ test("finds configurations in descendants and ancestor directories", async t => 
 		'throw new Error("ignored configuration executed");',
 	);
 
-	const paths = [
-		path.join(alpha, "public"),
-		beta,
-		path.join(project, "parent-public"),
-	];
+	assert.equal((await Webroot.requireOne(workspace)).path, path.join(project, "parent-public"));
+	assert.equal((await Webroot.requireOne(alpha)).path, path.join(alpha, "public"));
+
+	fs.unlinkSync(path.join(project, ".astralhp.mts"));
+	const paths = [path.join(alpha, "public"), beta];
 	assert.deepEqual(
 		(await Webroot.search(workspace)).map(webroot => webroot.path),
 		paths,

@@ -68,7 +68,7 @@ test("workers resolve project directories from configs and package manifests", t
 	assert.equal(site("standalone").projectDir, path.join(project, "standalone"));
 });
 
-test("explicit configurations take precedence over .htaccess markers", async t => {
+test("a configured project uses its declared webroots even when other directories contain .htaccess", async t => {
 	const project = fixture(t, {
 		adapter: "apache-proxy",
 		port: 9001,
@@ -80,11 +80,11 @@ test("explicit configurations take precedence over .htaccess markers", async t =
 	}
 	const sites = await Webroot.requireAll(project);
 	assert.deepEqual(sites.map(site => [path.relative(project, site.path), site.adapter]), [
-		["first", "apache-proxy"], ["second", "node"], ["third", "apache-static"],
+		["first", "apache-proxy"], ["second", "node"],
 	]);
 	assert.equal(sites[0].port, 9001);
 	assert.equal(sites[0].configFile, path.join(project, "astralhp.mts"));
-	assert.equal(sites[2].configFile, null);
+	assert.deepEqual(await Webroot.requireAll(path.join(project, "third")), sites);
 	assert.deepEqual(await Webroot.resolve(path.join(project, "first")), sites[0]);
 });
 
@@ -323,9 +323,10 @@ test("rejects duplicate webroots within an array and across configs", async t =>
 	const project = fixture(t, { webroot: ["www", "./www/"] });
 	await assert.rejects(Webroot.search(project), /configured more than once/);
 	fs.rmSync(path.join(project, "astralhp.mts"));
-	fs.writeFileSync(path.join(project, ".astralhp.mts"), 'export const config = { webroot: ["www"] };');
-	fs.mkdirSync(path.join(project, "www"));
-	fs.writeFileSync(path.join(project, "www/astralhp.mts"), "export const config = {};");
+	for (const sibling of ["first", "second"]) {
+		fs.mkdirSync(path.join(project, sibling));
+		fs.writeFileSync(path.join(project, sibling, "astralhp.mts"), 'export const config = { webroot: "../www" };');
+	}
 	await assert.rejects(Webroot.search(project), /configured by both/);
 });
 
