@@ -87,7 +87,7 @@ async function main(argv: string[]) {
 			break;
 		}
 		case "start":
-			console.log(await RemoteManager.startBackground(directory));
+			console.log(await serve(directory, true));
 			break;
 		case "reload":
 		case "stop":

@@ -9,13 +9,14 @@ import type { DatabaseSync } from "node:sqlite";
 import { text } from "node:stream/consumers";
 import { setTimeout as delay } from "node:timers/promises";
 import { type AstralHPLiveProcess, start } from "./astro.js";
+import { canonicalPath, findProjectDir, type ManagedProject, managedProject } from "./config-loader.js";
 import { Webroot } from "./webroot.js";
 
 const RUNTIME_DIRECTORY = path.join(".caches", "run");
 const CONTROL_SOCKET = path.join(RUNTIME_DIRECTORY, "control.sock");
 
-function createRuntimeDir(webroot?: string): string {
-	const runtime = path.join(fs.realpathSync(webroot ?? "."), RUNTIME_DIRECTORY);
+function createRuntimeDir(projectDir: string): string {
+	const runtime = path.join(projectDir, RUNTIME_DIRECTORY);
 	fs.mkdirSync(path.dirname(runtime), { recursive: true });
 	fs.mkdirSync(runtime, { recursive: true, mode: 0o700 });
 	return runtime;
@@ -33,6 +34,7 @@ export class RemoteManager {
 	readonly worker: string;
 	readonly socket: string;
 	readonly webroots: string[];
+	readonly lookupDirectories: string[];
 
 	private constructor(reply: string) {
 		const info = JSON.parse(reply);
@@ -41,14 +43,14 @@ export class RemoteManager {
 		this.worker = info.worker;
 		this.socket = info.socket;
 		this.webroots = info.webroots;
+		this.lookupDirectories = info.lookupDirectories ?? info.webroots;
 	}
 
-	static async startBackground(webroot?: string): Promise<string> {
-		const runtime = createRuntimeDir(webroot);
+	static async startBackground(project: ManagedProject): Promise<string> {
+		const runtime = createRuntimeDir(project.projectDir);
 		const log = fs.openSync(path.join(runtime, "server.log"), "a", 0o600);
 		try {
-			const args = webroot === undefined ? ["serve"] : ["serve", webroot];
-			const child = fork(new URL("./cli.js", import.meta.url), args, {
+			const child = fork(import.meta.filename, [], {
 				detached: true,
 				stdio: ["ignore", log, log, "ipc"],
 			});
@@ -61,22 +63,45 @@ export class RemoteManager {
 					if (reply.failed) reject(new Error(reply.message));
 					else resolve(reply.message);
 				});
+				child.send(project);
 			});
 		} finally {
 			fs.closeSync(log);
 		}
 	}
 
-	static async control(command: "reload" | "stop", projectDir?: string): Promise<string> {
-		if (projectDir !== undefined) process.chdir(projectDir);
+	private static async requestInProject(command: Command, directory: string): Promise<string | null> {
+		const target = fs.realpathSync(directory);
+		const projectDir = findProjectDir(target);
+		process.chdir(projectDir);
 		const reply = await RemoteManager.request(command);
+		if (reply !== null) return reply;
+
+		// Older managers may still have their socket in the selected webroot.
+		if (target !== projectDir && fs.existsSync(path.join(target, CONTROL_SOCKET))) {
+			process.chdir(target);
+			const legacy = await RemoteManager.request(command);
+			if (legacy !== null) return legacy;
+		}
+
+		// A configured webroot can live outside the project or have its own package.json.
+		const managers = await RemoteManager.list();
+		const owners = managers.filter(manager => manager.lookupDirectories.includes(target));
+		if (owners.length > 1) throw new Error(`Multiple projects use ${target}. Specify the project directory.`);
+		const [owner] = owners;
+		if (owner) return RemoteManager.request(command, owner.id);
+		return null;
+	}
+
+	static async control(command: "reload" | "stop", directory = "."): Promise<string> {
+		const reply = await RemoteManager.requestInProject(command, directory);
 		if (reply !== null) return reply;
 		if (command === "stop") return "AstralHP is already stopped.";
 		throw new Error("AstralHP is not running. Run astralhp start first.");
 	}
 
 	// A null reply means this connection acquired the project's write transaction.
-	static async claimOrContact(lock: DatabaseSync): Promise<string | null> {
+	static async claimOrContact(lock: DatabaseSync, webroots: string[]): Promise<string | null> {
 		const deadline = performance.now() + 2000;
 		while (true) {
 			try {
@@ -86,7 +111,7 @@ export class RemoteManager {
 				// SQLITE_BUSY is errcode 5.
 				if ((error as any)?.errcode !== 5) throw error;
 			}
-			const reply = await RemoteManager.request("start");
+			const reply = await RemoteManager.request("start", CONTROL_SOCKET, webroots);
 			if (reply !== null) return reply;
 			// The owner may still be binding its socket, or finishing shutdown.
 			if (performance.now() >= deadline) throw new Error("Manager lock is busy but the control socket is unavailable.");
@@ -94,9 +119,8 @@ export class RemoteManager {
 		}
 	}
 
-	static async status(projectDir: string): Promise<RemoteManager | null> {
-		process.chdir(projectDir);
-		const reply = await RemoteManager.request("status");
+	static async status(directory: string): Promise<RemoteManager | null> {
+		const reply = await RemoteManager.requestInProject("status", directory);
 		return reply === null ? null : new RemoteManager(reply);
 	}
 
@@ -118,7 +142,7 @@ export class RemoteManager {
 		return managers.sort((a, b) => a.pid - b.pid);
 	}
 
-	private static request(command: Command, socketPath = CONTROL_SOCKET): Promise<string | null> {
+	private static request(command: Command, socketPath = CONTROL_SOCKET, webroots?: string[]): Promise<string | null> {
 		return new Promise((resolve, reject) => {
 			const req = http.request({ socketPath, method: "POST", path: `/${command}` }, response => {
 				text(response).then(message => {
@@ -131,7 +155,7 @@ export class RemoteManager {
 				if (error.code === "ENOENT" || error.code === "ECONNREFUSED") resolve(null);
 				else reject(error);
 			});
-			req.end();
+			req.end(webroots && JSON.stringify(webroots));
 		});
 	}
 
@@ -150,7 +174,7 @@ export class RemoteManager {
 
 class ServerManager {
 	private readonly webroots: Webroot[];
-	private readonly workerCwd = process.cwd();
+	private readonly project: ManagedProject;
 	private readonly index = path.resolve(managerIndexDir());
 	private readonly id = randomUUID();
 	private readonly server: http.Server;
@@ -158,8 +182,9 @@ class ServerManager {
 	private stopping = false;
 	private pending: Promise<unknown> = Promise.resolve();
 
-	constructor(webroots: Webroot[]) {
-		this.webroots = webroots;
+	constructor(project: ManagedProject) {
+		this.project = project;
+		this.webroots = project.configs.map(Webroot.fromLoadedConfig);
 		this.server = http.createServer((req, res) => {
 			if (req.method === "POST" && req.url === "/status") {
 				const info: RemoteManager = {
@@ -168,6 +193,7 @@ class ServerManager {
 					worker: this.worker ? "running" : "stopped",
 					socket: path.resolve(CONTROL_SOCKET),
 					webroots: this.webroots.map(webroot => webroot.path),
+					lookupDirectories: project.lookupDirectories,
 				};
 				res.end(JSON.stringify(info));
 				return;
@@ -180,14 +206,14 @@ class ServerManager {
 		});
 	}
 
-	async listen(projectDir?: string): Promise<string> {
+	async listen(): Promise<string> {
 		// Keep the socket relative to this directory for both bind and unlink.
-		if (projectDir !== undefined) process.chdir(projectDir);
-		const runtime = createRuntimeDir();
+		process.chdir(this.project.projectDir);
+		const runtime = createRuntimeDir(this.project.projectDir);
 		const { DatabaseSync } = await import("node:sqlite");
 		const lock = new DatabaseSync(path.join(runtime, "manager.sqlite"));
 		try {
-			const reply = await RemoteManager.claimOrContact(lock);
+			const reply = await RemoteManager.claimOrContact(lock, this.webroots.map(site => canonicalPath(site.path)));
 			if (reply !== null) {
 				if (!process.send) throw new Error(reply);
 				lock.close();
@@ -230,7 +256,7 @@ class ServerManager {
 	}
 
 	private async launchWorker(options: { logStartup?: boolean } = {}): Promise<AstralHPLiveProcess> {
-		const worker = await start(this.webroots, options, this.workerCwd);
+		const worker = await start(this.webroots, options);
 		this.worker = worker;
 		worker.finished.catch(error => console.error(error.message)).finally(() => {
 			if (this.worker === worker) this.worker = undefined;
@@ -256,10 +282,20 @@ class ServerManager {
 		}
 		if (this.stopping) throw new Error("AstralHP is stopping.");
 		switch (req.url) {
-			case "/start":
+			case "/start": {
+				const requested: string[] = JSON.parse(await text(req));
+				const serving = this.webroots.map(site => canonicalPath(site.path));
+				if (requested.length !== serving.length || !requested.every(root => serving.includes(root))) {
+					throw new Error([
+						`This project's manager is configured for: ${serving.join(", ")}.`,
+						`Requested: ${requested.join(", ")}. The requested selection was not started.`,
+						"Run astralhp stop before changing webroots.",
+					].join("\n"));
+				}
 				if (!this.worker) throw new Error("The worker is stopped. Run astralhp reload to retry.");
 				res.end(["AstralHP is already running.", ...this.worker.urls].join("\n"));
 				break;
+			}
 			case "/reload":
 				await this.reload();
 				res.end("AstralHP reloaded.");
@@ -272,7 +308,22 @@ class ServerManager {
 	}
 }
 
-export async function serve(webroot?: string): Promise<string> {
-	const webroots = webroot === undefined ? await Webroot.requireAll() : [await Webroot.resolve(webroot)];
-	return new ServerManager(webroots).listen(webroot);
+export async function serve(webroot?: string, background = false): Promise<string> {
+	const project = await managedProject(webroot);
+	return background ? RemoteManager.startBackground(project) : new ServerManager(project).listen();
+}
+
+if (import.meta.main) {
+	process.once("message", async (project: ManagedProject) => {
+		try {
+			const message = await new ServerManager(project).listen();
+			console.log(message);
+			process.send!({ message });
+		} catch (error) {
+			const message = (error as Error).message;
+			console.error(message);
+			process.send!({ message, failed: true });
+			process.exitCode = 1;
+		}
+	});
 }

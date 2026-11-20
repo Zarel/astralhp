@@ -4,6 +4,7 @@ import { pathToFileURL } from "node:url";
 import type { Adapter, Config, WebrootConfig } from "./config.d.ts";
 
 const CONFIG_FILENAMES = ["astralhp.mts", ".astralhp.mts"] as const;
+const PROJECT_MARKERS = [...CONFIG_FILENAMES, "package.json"];
 const IGNORED_DIRECTORIES = new Set(["node_modules", ".git", ".caches"]);
 const ADAPTERS = new Set<Adapter>(["node", "apache-proxy", "apache-cgi", "apache-static"]);
 
@@ -117,6 +118,20 @@ function configIn(directory: string): string | null {
 		);
 	}
 	return matches[0] ?? null;
+}
+
+/** Marker-free sites use their webroot as a standalone project. */
+export function findProjectDir(directory: string, configFile?: string | null): string {
+	if (configFile) return path.dirname(configFile);
+	let current = directory;
+	while (true) {
+		for (const name of PROJECT_MARKERS) {
+			if (fs.statSync(path.join(current, name), { throwIfNoEntry: false })?.isFile()) return current;
+		}
+		const parent = path.dirname(current);
+		if (parent === current) return directory;
+		current = parent;
+	}
 }
 
 function findConfigMarkers(directory: string, configs: string[], apacheRoots: string[]): void {
@@ -244,4 +259,59 @@ export async function resolveConfig(
 		.filter(config => config.config.webroot === requestedRoot);
 	if (matches.length > 1) throw new Error(`Found multiple configurations for ${requestedRoot}`);
 	return matches[0] ?? { config: { webroot: requestedRoot }, configFile: null, isolatedCache: false };
+}
+
+export interface ManagedProject {
+	projectDir: string;
+	configs: LoadedWebrootConfig[];
+	lookupDirectories: string[];
+}
+
+export function canonicalPath(filename: string): string {
+	try {
+		return fs.realpathSync.native(path.resolve(filename));
+	} catch {
+		return path.resolve(filename);
+	}
+}
+
+export async function managedProject(webroot?: string): Promise<ManagedProject> {
+	const directory = path.resolve(webroot ?? ".");
+	const target = canonicalPath(directory);
+	const matchesTarget = (site: LoadedWebrootConfig) => canonicalPath(site.config.webroot) === target;
+	const projectOf = (site: LoadedWebrootConfig) => canonicalPath(findProjectDir(site.config.webroot, site.configFile));
+	let configs = webroot === undefined ? await requireConfigs(directory) : await searchConfigs(directory);
+	let selected = configs.find(matchesTarget);
+	if (webroot !== undefined && !selected?.configFile) {
+		// A config in the caller's project can declare a webroot outside that project.
+		const callerConfig = configIn(findProjectDir(process.cwd()));
+		if (callerConfig && !configs.some(site => site.configFile === callerConfig)) {
+			const callerSites = await loadConfig(callerConfig);
+			const external = callerSites.find(matchesTarget);
+			if (external) {
+				selected = external;
+				configs = callerSites;
+			}
+		}
+		if (!selected && !configs.some(site => projectOf(site) === target)) {
+			selected = { config: { webroot: directory }, configFile: null, isolatedCache: false };
+			configs.push(selected);
+		}
+	}
+	const projects = Map.groupBy(configs, projectOf);
+	let projectDir = selected ? projectOf(selected) : findProjectDir(target);
+	if (!projects.has(projectDir)) {
+		if (projects.size !== 1) {
+			throw new Error(
+				`Found multiple AstralHP projects. Start each project separately:\n${[...projects.keys()].join("\n")}`,
+			);
+		}
+		projectDir = projects.keys().next().value!;
+	}
+	const sites = projects.get(projectDir)!;
+	return {
+		projectDir,
+		configs: webroot !== undefined && selected ? [selected] : sites,
+		lookupDirectories: [...new Set([target, ...sites.map(site => canonicalPath(site.config.webroot))])],
+	};
 }

@@ -3,7 +3,7 @@ import { fileURLToPath } from "node:url";
 
 import type { DevServerOptions } from "./dev-server.js";
 import type { LiveServerOptions } from "./live-server.js";
-import type { Webroot } from "./webroot.js";
+import { Webroot } from "./webroot.js";
 
 interface SerializedWebroot {
 	path: string;
@@ -160,7 +160,7 @@ function run(
 		operation,
 		webroots: roots.map(serializeWebroot),
 		...(options === undefined ? {} : { options }),
-	}, cwd);
+	}, cwd ?? (operation === "start" ? Webroot.workerDirectory(roots) : undefined));
 }
 
 export async function build(webroot: Webroot): Promise<string> {

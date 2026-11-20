@@ -298,8 +298,13 @@ AstralHP uses a few hidden cache directories:
 - `dist/.server` contains server software for dynamic pages
 - `dist` contains built versions of static pages
 
-With `webroot: '.'`, the two `.caches/` directories will be combined. With
-multiple webroots, `.astro` will be in `.caches/[webroot]/.astro`.
+AstralHP interprets the project directory as the directory containing
+`astralhp.mts` or `package.json`. If neither exists, it uses the webroot.
+
+We recommend not using the same directory for webroot and the project, but you
+can do that by setting `webroot: '.'`. This combines the two `.caches/`
+directories. With multiple webroots, `.astro` will be in
+`.caches/[webroot]/.astro`.
 
 You probably want to add `.caches/` to your `.gitignore`.
 

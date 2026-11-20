@@ -5,6 +5,8 @@ import path from "node:path";
 import type { Adapter, WebrootConfig } from "./config.d.ts";
 
 import {
+	canonicalPath,
+	findProjectDir,
 	type LoadedWebrootConfig,
 	requireConfig,
 	requireConfigs,
@@ -32,14 +34,6 @@ export interface AstralHPConfigOptions {
 	entrypointRoot?: string;
 	staticOnly?: boolean;
 	prerender?: boolean;
-}
-
-function canonicalPath(filename: string): string {
-	try {
-		return fs.realpathSync.native(path.resolve(filename));
-	} catch {
-		return path.resolve(filename);
-	}
 }
 
 export function astralhpIntegration(
@@ -95,6 +89,7 @@ export function astralhpIntegration(
 
 export class Webroot {
 	readonly path: string;
+	readonly projectDir: string;
 	readonly configFile: string | null;
 	readonly adapter: Adapter;
 	readonly prerender: boolean;
@@ -129,13 +124,14 @@ export class Webroot {
 		} else {
 			throw new Error("Webroot requires config.webroot or a config file");
 		}
+		this.projectDir = findProjectDir(this.path, this.configFile);
 		this.adapter = config.adapter ?? "apache-static";
 		this.prerender = config.prerender ?? true;
 		this.port = config.port ?? 4321;
 		this.runtimePath = config.runtimePath;
 		this.caches = path.join(this.path, ".caches");
 		this.isolatedCache = isolatedCache;
-		this.projectCaches = path.join(this.configFile ? path.dirname(this.configFile) : this.path, ".caches");
+		this.projectCaches = this.configFile ? path.join(this.projectDir, ".caches") : this.caches;
 		if (isolatedCache) {
 			// Use the normalized path, not the array position, so reordering or
 			// adding entries does not change existing cache identities.
@@ -152,8 +148,22 @@ export class Webroot {
 		this.publicDir = path.join(this.astroCache, "public");
 	}
 
-	private static fromLoadedConfig(loaded: LoadedWebrootConfig): Webroot {
+	static fromLoadedConfig(loaded: LoadedWebrootConfig): Webroot {
 		return new Webroot(loaded.config, loaded.configFile, loaded.isolatedCache);
+	}
+
+	static workerDirectory(webroots: readonly Webroot[]): string {
+		if (!webroots.length) throw new Error("No AstralHP webroots found");
+		let shared = webroots[0]!.projectDir;
+		if (webroots.every(site => site.projectDir === shared)) return shared;
+		for (const { projectDir } of webroots) {
+			while (shared !== projectDir && !projectDir.startsWith(path.join(shared, path.sep))) {
+				const parent = path.dirname(shared);
+				if (parent === shared) throw new Error("The webroots must share a filesystem root");
+				shared = parent;
+			}
+		}
+		return findProjectDir(shared);
 	}
 
 	static async search(directory: string = process.cwd()): Promise<Webroot[]> {

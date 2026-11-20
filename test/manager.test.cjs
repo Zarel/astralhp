@@ -97,6 +97,70 @@ test("background start prints the URL assigned to an ephemeral port", async t =>
 	assert.equal(await (await fetch(url)).text(), "ephemeral");
 });
 
+test("competing webroots share one project manager and report the winning selection", async t => {
+	const { project, publish, run } = await fixture(t);
+	publish("ready");
+	fs.cpSync(path.join(project, "www"), path.join(project, "admin"), { recursive: true });
+	const config = path.join(project, "astralhp.mts");
+	const configure = roots =>
+		fs.writeFileSync(config, `export const config = { adapter: "apache-proxy", webroot: ${JSON.stringify(roots)} };`);
+	configure(["www", "admin"]);
+	const starts = await Promise.allSettled([run("start", "www"), run("start", "admin")]);
+	assert.equal(starts.filter(result => result.status === "fulfilled").length, 1);
+	const winner = starts[0].status === "fulfilled" ? "www" : "admin";
+	const loser = winner === "www" ? "admin" : "www";
+	fs.writeFileSync(path.join(project, loser, "package.json"), "{}");
+	const error = starts.find(result => result.status === "rejected").reason.stderr;
+	assert(error.includes(`configured for: ${fs.realpathSync(path.join(project, winner))}`), error);
+	assert(error.includes(`Requested: ${fs.realpathSync(path.join(project, loser))}`), error);
+	assert.match((await run("start", winner)).stdout, /already running/);
+	fs.writeFileSync(config, "throw new Error('broken config');");
+	const status = (await run("ps", ".")).stdout;
+	assert.equal((await run("ps", loser)).stdout, status);
+	assert.equal((await run("ps")).stdout, status);
+	await run("reload", loser);
+	await run("stop");
+	configure(["www", "admin"]);
+	await run("start");
+	configure(["admin", "www"]);
+	assert.match((await run("start", ".")).stdout, /already running/);
+	await run("stop", loser);
+});
+
+test("manages a configured webroot outside its project", async t => {
+	const { project, run, publish } = await fixture(t);
+	const outside = fs.mkdtempSync(path.join(os.tmpdir(), "astralhp-external-"));
+	t.after(() => fs.rmSync(outside, { recursive: true, force: true }));
+	publish("external");
+	fs.cpSync(path.join(project, "www"), outside, { recursive: true });
+	fs.writeFileSync(
+		path.join(project, "astralhp.mts"),
+		`export const config = { adapter: "apache-proxy", webroot: ${JSON.stringify(outside)} };`,
+	);
+	await run("start", outside);
+	assert(fs.statSync(path.join(project, ".caches/run/control.sock")).isSocket());
+	assert.equal((await run("ps", outside)).stdout, (await run("ps", ".")).stdout);
+	await run("stop", outside);
+	assert.match((await run("ps", ".")).stdout, /No AstralHP manager/);
+});
+
+test("a managed start selects a single project when discovery finds several", async t => {
+	const { project, run, publish } = await fixture(t);
+	publish("parent");
+	const nested = path.join(project, "nested");
+	fs.mkdirSync(nested);
+	fs.cpSync(path.join(project, "www"), path.join(nested, "www"), { recursive: true });
+	fs.copyFileSync(path.join(project, "astralhp.mts"), path.join(nested, "astralhp.mts"));
+	const { stdout } = await run("start");
+	assert(!stdout.includes(nested), stdout);
+	assert.match((await run("status", nested)).stdout, /No AstralHP manager/);
+	await run("stop");
+
+	fs.mkdirSync(path.join(project, "sibling"));
+	fs.renameSync(path.join(project, "astralhp.mts"), path.join(project, "sibling", "astralhp.mts"));
+	await assert.rejects(run("start"), /Found multiple AstralHP projects/);
+});
+
 async function serveForeground(options, ...args) {
 	const child = spawn(process.execPath, [cli, "serve", ...args], { ...options, stdio: ["ignore", "pipe", "inherit"] });
 	const exit = once(child, "exit");
@@ -120,8 +184,7 @@ test("serve stays in the foreground and accepts commands for its explicit webroo
 	assert.equal(output, `AstralHP running, listening to ${new URL("/", url).href}\nServing ${webroot}\n`);
 	assert.equal(started.stdout, output);
 	assert.equal(await (await fetch(url)).text(), "foreground");
-	assert.match((await run("stop")).stdout, /already stopped/);
-	await run("reload", "www");
+	await run("reload");
 	await run("stop", "www");
 	assert.deepEqual(await exit, [0, null]);
 });
@@ -191,21 +254,27 @@ test("ps discovers live managers across projects and skips stale registrations",
 	assert.equal(await ps(), "No AstralHP managers running.");
 });
 
-test("manages a distant webroot using a short socket name and keeps the worker's launch directory", async t => {
-	const webroot = "nested-site/".repeat(12) + "www";
-	const { project, run, entry, url } = await fixture(t, webroot);
-	const root = fs.realpathSync(path.join(project, webroot));
-	const socket = path.join(root, ".caches/run/control.sock");
+test("manages a distant project through either the project directory or its webroot", async t => {
+	const nested = "nested-site/".repeat(12);
+	const webroot = nested + "www";
+	const { project, options, run, entry, url } = await fixture(t, webroot);
+	const projectDir = fs.realpathSync(path.join(project, nested));
+	const root = path.join(projectDir, "www");
+	fs.renameSync(path.join(project, "astralhp.mts"), path.join(projectDir, "astralhp.mts"));
+	fs.writeFileSync(
+		path.join(projectDir, "astralhp.mts"), 'export const config = { adapter: "apache-proxy", webroot: "www" };',
+	);
+	const socket = path.join(projectDir, ".caches/run/control.sock");
 	fs.writeFileSync(entry, "export function handler(req, res) { res.end(process.cwd()); }");
 	assert.equal((await run("status", webroot)).stdout.trim(), "No AstralHP manager running for this project.");
-	await run("start", webroot);
+	await exec(process.execPath, [cli, "start", root], { ...options, cwd: os.tmpdir() });
 	assert(fs.statSync(socket).isSocket());
 	const status = (await run("status", root)).stdout;
 	assert.equal(status.trim().split("\n")[1].split("\t")[2], root);
 	assert.equal((await run("ps")).stdout, status);
-	assert.equal(fs.realpathSync(await (await fetch(url)).text()), fs.realpathSync(project));
-	await run("reload", webroot);
-	assert.equal(fs.realpathSync(await (await fetch(url)).text()), fs.realpathSync(project));
-	await run("stop", root);
+	assert.equal(await (await fetch(url)).text(), projectDir);
+	await run("reload", projectDir);
+	assert.equal(await (await fetch(url)).text(), projectDir);
+	await run("stop", projectDir);
 	assert(!fs.existsSync(socket));
 });

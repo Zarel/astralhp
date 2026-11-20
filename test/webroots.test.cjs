@@ -49,6 +49,25 @@ test("discovers .htaccess webroots in descendants and ancestors without treating
 	await assert.rejects(Webroot.requireOne(project), /Found multiple AstralHP webroots/);
 });
 
+test("workers resolve project directories from configs and package manifests", t => {
+	const project = fixture(t, {});
+	const site = name => new Webroot({ webroot: path.join(project, name) });
+	const first = site("sites/first/www");
+	assert.equal(first.projectDir, project);
+	for (const name of ["sites/first", "sites/second"]) {
+		fs.mkdirSync(path.join(project, name, "www"), { recursive: true });
+		fs.writeFileSync(path.join(project, name, "package.json"), "{}");
+	}
+	const sites = [site("sites/first/www"), site("sites/second/www")];
+	assert.equal(sites[0].projectDir, path.join(project, "sites/first"));
+	assert.equal(Webroot.workerDirectory(sites), project);
+	const configured = new Webroot({ webroot: sites[0].path }, path.join(project, "astralhp.mts"));
+	assert.equal(configured.projectDir, project);
+	fs.unlinkSync(path.join(project, "astralhp.mts"));
+	assert.equal(Webroot.workerDirectory(sites), path.join(project, "sites"));
+	assert.equal(site("standalone").projectDir, path.join(project, "standalone"));
+});
+
 test("explicit configurations take precedence over .htaccess markers", async t => {
 	const project = fixture(t, {
 		adapter: "apache-proxy",
@@ -164,7 +183,8 @@ test("CLI lists and builds array entries, then serves both through a shared prox
 			path.join(project, name, "index.astro"), `---\nexport const prerender = true;\n---\n${name} static`,
 		);
 		fs.writeFileSync(
-			path.join(project, name, "live.astro"), `---\nexport const prerender = false;\n---\n${name} dynamic`,
+			path.join(project, name, "live.astro"),
+			`---\nexport const prerender = false;\n---\n${name} dynamic {process.cwd()}`,
 		);
 	}
 	const listed = spawnSync(process.execPath, [cli], { cwd: project, encoding: "utf8" });
@@ -191,7 +211,7 @@ test("CLI lists and builds array entries, then serves both through a shared prox
 				headers: { "X-AstralHP-Document-Root": site.path },
 			});
 			assert.equal(response.status, 200);
-			assert.match(await response.text(), new RegExp(`${path.basename(site.path)} dynamic`));
+			assert((await response.text()).includes(`${path.basename(site.path)} dynamic ${fs.realpathSync(project)}`));
 		}
 	} finally {
 		await worker.close();
