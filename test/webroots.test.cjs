@@ -7,7 +7,7 @@ const os = require("node:os");
 const path = require("node:path");
 const { spawnSync } = require("node:child_process");
 const test = require("node:test");
-const { Webroot, dev, start } = require("astralhp");
+const { Webroot, build, dev, start } = require("astralhp");
 const { validateConfig } = require("../dist/config-loader.js");
 
 const cli = path.resolve(__dirname, "../astralhp");
@@ -95,12 +95,14 @@ test("an empty .htaccess is sufficient for CLI discovery, builds, and local deve
 	fs.mkdirSync(root);
 	fs.writeFileSync(path.join(root, ".htaccess"), "");
 	fs.writeFileSync(path.join(root, "index.astro"), "<h1>Zero config</h1>");
+	fs.writeFileSync(path.join(root, "about.md"), "# About");
 	const listed = spawnSync(process.execPath, [cli], { cwd: project, encoding: "utf8" });
 	assert.equal(listed.status, 0, listed.stderr);
 	assert.equal(listed.stdout.trim(), "AstralHP webroots:\n  www");
 	const built = spawnSync(process.execPath, [cli, "build"], { cwd: project, encoding: "utf8" });
 	assert.equal(built.status, 0, built.stderr);
 	assert.match(fs.readFileSync(path.join(root, ".caches/dist/index.html"), "utf8"), /Zero config/);
+	assert.match(fs.readFileSync(path.join(root, ".caches/dist/about.html"), "utf8"), /<h1[^>]*>About<\/h1>/);
 	assert.match(fs.readFileSync(path.join(root, ".htaccess"), "utf8"), /BEGIN ASTRALHP/);
 	assert.equal(fs.existsSync(path.join(root, ".caches/dist/.server")), false);
 	const site = await Webroot.requireOne(project);
@@ -152,6 +154,50 @@ test("expands paths and overrides, resolves selected webroots, and keeps stable 
 	assert.equal(reordered[1].projectCaches, sites[0].projectCaches);
 });
 
+test("renders Markdown routes with inherited, per-webroot, and explicit page layouts", async t => {
+	const project = fixture(t, {
+		defaultMarkdownLayout: "Article.astro",
+		webroot: ["www", { webroot: "docs", defaultMarkdownLayout: "docs/Guide.astro", adapter: "node", prerender: false }],
+	});
+	for (const root of ["www", "docs"]) fs.mkdirSync(path.join(project, root, "posts"), { recursive: true });
+	for (const [file, tag] of [["Article.astro", "article"], ["docs/Guide.astro", "main"], ["Other.astro", "aside"]]) {
+		fs.writeFileSync(path.join(project, file), `<${tag} data-title={Astro.props.frontmatter.title}><slot /></${tag}>`);
+	}
+	const page = "---\ntitle: Welcome\n---\n# Hello";
+	fs.writeFileSync(path.join(project, "www/index.md"), page);
+	fs.writeFileSync(path.join(project, "www/brief.md"), "**Short post**");
+	fs.writeFileSync(path.join(project, "docs/posts/index.md"), page);
+	fs.writeFileSync(path.join(project, "docs/posts/[slug].md"), "# Dynamic post");
+	fs.writeFileSync(
+		path.join(project, "www/posts/news.md"), "---\nlayout: ../../Other.astro\ntitle: News\n---\n**Update**",
+	);
+	fs.writeFileSync(path.join(project, "www/plain.astro"), "<p>Plain Astro</p>");
+	const [www, docs] = await Webroot.requireAll(project);
+	for (const site of [www, docs]) await build(site);
+	for (const site of [www, docs]) assert(!fs.existsSync(path.join(site.astroCache, "markdown")));
+	const html = (site, name) => fs.readFileSync(path.join(site.dist, name), "utf8");
+	assert.match(html(www, "index.html"), /<article data-title="Welcome">\s*<h1[^>]*>Hello<\/h1>/);
+	assert.match(html(www, "brief.html"), /<article>[\s\S]*<strong>Short post<\/strong>/);
+	assert.match(html(www, "posts/news.html"), /<aside data-title="News">[\s\S]*<strong>Update<\/strong>/);
+	assert.doesNotMatch(html(www, "plain.html"), /<article/);
+	assert.equal(docs.resolveDistFile("/posts"), null);
+	assert.equal(docs.resolveStaticFile("/posts/index.md"), null);
+	const port = await freePort();
+	for (const launch of [dev, start]) {
+		const server = await launch(docs, { port });
+		try {
+			const response = await fetch(`http://localhost:${port}/posts`);
+			assert.equal(response.status, 200);
+			assert.match(await response.text(), /<main data-title="Welcome"/);
+			const post = await fetch(`http://localhost:${port}/posts/example`);
+			assert.equal(post.status, 200);
+			assert.match(await post.text(), /<main\b[^>]*>[\s\S]*>Dynamic post<\/h1>/);
+		} finally {
+			await server.close();
+		}
+	}
+});
+
 test("rejects malformed multi-webroot configurations", () => {
 	for (const value of [null, 42, "", {}, [], [""], [null], [42], [{}], [{ webroot: "" }], [["www"]]]) {
 		assert.throws(() => validateConfig({ webroot: value }, "config"), /webroot/);
@@ -159,6 +205,7 @@ test("rejects malformed multi-webroot configurations", () => {
 	assert.throws(() => validateConfig({ webroot: [{ webroot: ["other"] }] }, "config"), /non-empty webroot/);
 	for (const entry of [
 		{ adapter: "unknown" }, { port: -1 }, { runtimePath: "bun" }, { prerender: "false" }, { typo: true },
+		{ defaultMarkdownLayout: "" }, { defaultMarkdownLayout: 42 },
 	]) {
 		assert.throws(() => validateConfig({ webroot: [{ webroot: "www", ...entry }] }, "config"));
 	}

@@ -3,5 +3,5 @@
 	"compilerOptions": {
 		"types": ["node"]
 	},
-	"include": ["src/components/**/*.astro"]
+	"include": ["src/components/**/*.astro", "src/components/**/*.d.ts"]
 }

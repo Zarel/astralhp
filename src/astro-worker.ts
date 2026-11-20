@@ -26,7 +26,8 @@ interface SerializedWebroot {
 	adapter: Webroot["adapter"];
 	prerender: boolean;
 	port: number;
-	runtimePath?: string;
+	runtimePath?: string | undefined;
+	defaultMarkdownLayout?: string | undefined;
 }
 
 interface WorkerRequest {
@@ -42,7 +43,8 @@ function webrootFrom(data: SerializedWebroot): Webroot {
 			adapter: data.adapter,
 			prerender: data.prerender,
 			port: data.port,
-			...(data.runtimePath === undefined ? {} : { runtimePath: data.runtimePath }),
+			defaultMarkdownLayout: data.defaultMarkdownLayout,
+			runtimePath: data.runtimePath,
 		},
 		data.configFile,
 		data.isolatedCache,
@@ -53,6 +55,8 @@ function outsideRootEntrypoints(
 	webroot: Webroot,
 	pages: AstralHPPage[],
 ): vite.Plugin {
+	const markdownPages = pages.filter(page => page.markdownFile);
+	const markdownModule = "virtual:astralhp/markdown-pages";
 	const nodeImageEndpoint = fileURLToPath(
 		import.meta.resolve("astro/assets/endpoint/node"),
 	);
@@ -68,6 +72,7 @@ function outsideRootEntrypoints(
 		name: "astralhp:outside-root-entrypoints",
 		enforce: "pre",
 		resolveId(source) {
+			if (source === markdownModule) return "\0" + markdownModule;
 			if (
 				source === "astro" || source.startsWith("astro/") ||
 				source === "@astrojs/node" || source.startsWith("@astrojs/node/") ||
@@ -79,7 +84,22 @@ function outsideRootEntrypoints(
 			}
 			return entrypoints.get(source) ?? null;
 		},
+		load(id) {
+			if (id !== "\0" + markdownModule) return;
+			const loaders = markdownPages.map(page =>
+				`${JSON.stringify(page.pattern)}: () => import(${JSON.stringify(page.markdownFile)})`
+			);
+			return `export default {\n${loaders.join(",\n")}\n};`;
+		},
 	};
+}
+
+function pageEntrypoints(webroot: Webroot): AstralHPPage[] {
+	const entrypoint = fileURLToPath(new URL("./components/MarkdownPage.astro", import.meta.url));
+	return webroot.scanPages().map(page => {
+		if (!page.entrypoint.endsWith(".md")) return page;
+		return { ...page, markdownFile: page.entrypoint, entrypoint };
+	});
 }
 
 function astroConfig(
@@ -89,9 +109,9 @@ function astroConfig(
 	bundles: AssetBundles = new AssetBundles(webroot),
 	legacyCache: ScriptCache = new Map(),
 ): astro.AstroInlineConfig {
-	const pages = webroot.scanPages();
+	const pages = pageEntrypoints(webroot);
 	if (!pages.length) {
-		throw new Error(`No .astro pages found in ${webroot.path}`);
+		throw new Error(`No .astro or .md pages found in ${webroot.path}`);
 	}
 	const staticOnly = webroot.adapter === "apache-static";
 
@@ -119,6 +139,7 @@ function astroConfig(
 			entrypointRoot: webroot.projectCaches,
 			staticOnly,
 			prerender: webroot.prerender,
+			defaultMarkdownLayout: webroot.defaultMarkdownLayout,
 		})],
 		vite: {
 			root: webroot.path,

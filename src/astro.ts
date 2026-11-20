@@ -12,7 +12,8 @@ interface SerializedWebroot {
 	adapter: Webroot["adapter"];
 	prerender: boolean;
 	port: number;
-	runtimePath?: string;
+	runtimePath?: string | undefined;
+	defaultMarkdownLayout?: string | undefined;
 }
 
 interface WorkerRequest {
@@ -42,8 +43,9 @@ function serializeWebroot(webroot: Webroot): SerializedWebroot {
 		isolatedCache: webroot.isolatedCache,
 		adapter: webroot.adapter,
 		prerender: webroot.prerender,
+		defaultMarkdownLayout: webroot.defaultMarkdownLayout,
 		port: webroot.port,
-		...(webroot.runtimePath === undefined ? {} : { runtimePath: webroot.runtimePath }),
+		runtimePath: webroot.runtimePath,
 	};
 }
 

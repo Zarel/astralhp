@@ -43,7 +43,7 @@ export function validateConfig(value: any, filename: string): Config {
 	}
 
 	for (const key of Object.keys(value)) {
-		if (key !== "webroot" && key !== "adapter" && key !== "port" && key !== "runtimePath" && key !== "prerender") {
+		if (!["webroot", "adapter", "port", "runtimePath", "prerender", "defaultMarkdownLayout"].includes(key)) {
 			throw new Error(`Unknown AstralHP configuration option: ${key}`);
 		}
 	}
@@ -78,6 +78,12 @@ export function validateConfig(value: any, filename: string): Config {
 	}
 	if (value.prerender !== undefined && typeof value.prerender !== "boolean") {
 		throw new Error("AstralHP configuration option prerender must be a boolean");
+	}
+	if (
+		value.defaultMarkdownLayout !== undefined &&
+		(typeof value.defaultMarkdownLayout !== "string" || !value.defaultMarkdownLayout.trim())
+	) {
+		throw new Error("AstralHP configuration option defaultMarkdownLayout must be a non-empty path");
 	}
 	if (
 		value.port !== undefined &&

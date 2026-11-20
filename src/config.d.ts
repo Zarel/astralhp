@@ -8,6 +8,8 @@ export interface WebrootConfig {
 	 * @default '.'
 	 */
 	webroot?: string;
+	/** Default layout for Markdown pages, relative to the config file. */
+	defaultMarkdownLayout?: string | undefined;
 	/**
 	 * Whether pages are rendered at build time by default. A page's
 	 * `export const prerender` overrides this setting.
@@ -31,7 +33,7 @@ export interface WebrootConfig {
 	 * Absolute path to the JavaScript interpreter (Bun or Node) for apache-cgi.
 	 * Must not contain whitespace. Defaults to finding bun on Apache's PATH.
 	 */
-	runtimePath?: string;
+	runtimePath?: string | undefined;
 	/**
 	 * Port for the AstralHP server. `apache-proxy` webroots with the same port
 	 * share one listener in the same process. Each `node` webroot must use a

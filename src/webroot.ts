@@ -1,7 +1,9 @@
 import type * as astro from "astro";
+import type { MarkdownProcessor } from "astro/markdown";
 import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import type { Adapter, WebrootConfig } from "./config.d.ts";
 
 import {
@@ -22,6 +24,7 @@ const PRIVATE_DIRECTORIES = new Set([".caches", ".server", "node_modules"]);
 export interface AstralHPPage {
 	pattern: string;
 	entrypoint: string;
+	markdownFile?: string;
 }
 
 export interface AstralHPResolvedRoutes {
@@ -34,6 +37,28 @@ export interface AstralHPConfigOptions {
 	entrypointRoot?: string;
 	staticOnly?: boolean;
 	prerender?: boolean;
+	defaultMarkdownLayout?: string | undefined;
+}
+
+function withMarkdownLayout(processor: MarkdownProcessor, layout: string, pages: Set<string>): MarkdownProcessor {
+	return {
+		...processor,
+		async createRenderer(options) {
+			const renderer = await processor.createRenderer(options);
+			return {
+				render(source, context) {
+					if (context?.fileURL) {
+						const filename = fileURLToPath(context.fileURL);
+						if (pages.has(canonicalPath(filename))) {
+							const relative = path.relative(path.dirname(filename), layout).split(path.sep).join("/");
+							context = { ...context, frontmatter: { layout: "./" + relative, ...context.frontmatter } };
+						}
+					}
+					return renderer.render(source, context);
+				},
+			};
+		},
+	};
 }
 
 export function astralhpIntegration(
@@ -43,6 +68,7 @@ export function astralhpIntegration(
 	const entrypoints = new Set(
 		pages.map(page => canonicalPath(page.entrypoint)),
 	);
+	const markdownPages = new Set(pages.flatMap(page => page.markdownFile ? [canonicalPath(page.markdownFile)] : []));
 	let trailingSlash: astro.AstroConfig["trailingSlash"] = "ignore";
 	const canonicalEntrypoint = (entrypoint: string): string =>
 		canonicalPath(
@@ -54,10 +80,18 @@ export function astralhpIntegration(
 	return {
 		name: "astralhp",
 		hooks: {
-			"astro:config:setup"({ injectRoute }) {
+			"astro:config:setup"({ injectRoute, config, updateConfig }) {
+				if (options.defaultMarkdownLayout) {
+					const processor = config.markdown.processor as MarkdownProcessor;
+					updateConfig({
+						markdown: { processor: withMarkdownLayout(processor, options.defaultMarkdownLayout, markdownPages) },
+					});
+				}
 				// Set page defaults independently of the adapter's output mode.
 				// Astro still gives an explicit page export precedence over this.
-				for (const page of pages) injectRoute({ ...page, prerender: options.prerender ?? true });
+				for (const { pattern, entrypoint } of pages) {
+					injectRoute({ pattern, entrypoint, prerender: options.prerender ?? true });
+				}
 			},
 			"astro:config:done"({ config }) {
 				trailingSlash = config.trailingSlash;
@@ -90,6 +124,7 @@ export function astralhpIntegration(
 export class Webroot {
 	readonly path: string;
 	readonly projectDir: string;
+	readonly defaultMarkdownLayout: string | undefined;
 	readonly configFile: string | null;
 	readonly adapter: Adapter;
 	readonly prerender: boolean;
@@ -125,6 +160,8 @@ export class Webroot {
 			throw new Error("Webroot requires config.webroot or a config file");
 		}
 		this.projectDir = findProjectDir(this.path, this.configFile);
+		this.defaultMarkdownLayout = config.defaultMarkdownLayout &&
+			path.resolve(this.projectDir, config.defaultMarkdownLayout);
 		this.adapter = config.adapter ?? "apache-static";
 		this.prerender = config.prerender ?? true;
 		this.port = config.port ?? 4321;
@@ -245,11 +282,16 @@ export class Webroot {
 					if (!PRIVATE_DIRECTORIES.has(entry.name.toLowerCase())) scan(filename);
 					continue;
 				}
-				if (!entry.isFile() || !entry.name.endsWith(".astro")) continue;
+				const extension = path.extname(entry.name);
+				if (
+					!entry.isFile() || (extension !== ".astro" && extension !== ".md") || filename === this.defaultMarkdownLayout
+				) {
+					continue;
+				}
 
 				const relative = path.relative(this.path, filename);
 				const segments = relative.split(path.sep);
-				const basename = segments.pop()!.slice(0, -".astro".length);
+				const basename = segments.pop()!.slice(0, -extension.length);
 				if (basename !== "index") segments.push(basename);
 				const pattern = `/${segments.join("/")}`;
 				const conflict = patterns.get(pattern);
@@ -288,7 +330,7 @@ export class Webroot {
 		const filename = this.resolveFile(requestUrl);
 		if (
 			!filename ||
-			[".astro", ".ts", ".tsx"].includes(path.extname(filename).toLowerCase())
+			[".astro", ".md", ".ts", ".tsx"].includes(path.extname(filename).toLowerCase())
 		) {
 			return null;
 		}
