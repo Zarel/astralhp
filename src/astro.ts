@@ -13,8 +13,9 @@ interface SerializedWebroot {
 	prerender: boolean;
 	port: number;
 	runtimePath?: string | undefined;
-	defaultMarkdownLayout?: string | undefined;
+	markdownLayout?: string | undefined;
 	excludePages: readonly string[];
+	markdownAddTargetBlank: boolean;
 }
 
 interface WorkerRequest {
@@ -44,8 +45,9 @@ function serializeWebroot(webroot: Webroot): SerializedWebroot {
 		isolatedCache: webroot.isolatedCache,
 		adapter: webroot.adapter,
 		prerender: webroot.prerender,
-		defaultMarkdownLayout: webroot.defaultMarkdownLayout,
+		markdownLayout: webroot.markdownLayout,
 		excludePages: webroot.excludePages,
+		markdownAddTargetBlank: webroot.markdownAddTargetBlank,
 		port: webroot.port,
 		runtimePath: webroot.runtimePath,
 	};

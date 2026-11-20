@@ -10,8 +10,10 @@ export interface WebrootConfig {
 	webroot?: string;
 	/** Files or directories to skip during page discovery, relative to the webroot. */
 	excludePages?: readonly string[];
-	/** Default layout for .md and .mdx pages, relative to the config file. */
-	defaultMarkdownLayout?: string | undefined;
+	/** Add `target="blank" rel="noopener"` to external Markdown links. Defaults to false. */
+	markdownAddTargetBlank?: boolean;
+	/** Default Astro layout for `.md` and `.mdx` pages, relative to the config file. */
+	markdownLayout?: string | undefined;
 	/**
 	 * Whether pages are rendered at build time by default. A page's
 	 * `export const prerender` overrides this setting.

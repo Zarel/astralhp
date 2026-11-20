@@ -37,7 +37,7 @@ export interface AstralHPConfigOptions {
 	entrypointRoot?: string;
 	staticOnly?: boolean;
 	prerender?: boolean;
-	defaultMarkdownLayout?: string | undefined;
+	markdownLayout?: string | undefined;
 }
 
 function withMarkdownLayout(processor: MarkdownProcessor, layout: string, pages: Set<string>): MarkdownProcessor {
@@ -92,10 +92,10 @@ export function astralhpIntegration(
 			"astro:config:setup"({ injectRoute, config, updateConfig }) {
 				// Astro checks for src/pages when there are no injected routes.
 				if (!pages.length) fs.mkdirSync(new URL("pages/", config.srcDir), { recursive: true });
-				if (options.defaultMarkdownLayout) {
+				if (options.markdownLayout) {
 					const processor = config.markdown.processor as MarkdownProcessor;
 					updateConfig({
-						markdown: { processor: withMarkdownLayout(processor, options.defaultMarkdownLayout, markdownPages) },
+						markdown: { processor: withMarkdownLayout(processor, options.markdownLayout, markdownPages) },
 					});
 				}
 				// Set page defaults independently of the adapter's output mode.
@@ -135,8 +135,9 @@ export function astralhpIntegration(
 export class Webroot {
 	readonly path: string;
 	readonly projectDir: string;
+	readonly markdownAddTargetBlank: boolean;
 	readonly excludePages: readonly string[];
-	readonly defaultMarkdownLayout: string | undefined;
+	readonly markdownLayout: string | undefined;
 	readonly configFile: string | null;
 	readonly adapter: Adapter;
 	readonly prerender: boolean;
@@ -172,9 +173,10 @@ export class Webroot {
 			throw new Error("Webroot requires config.webroot or a config file");
 		}
 		this.projectDir = findProjectDir(this.path, this.configFile);
+		this.markdownAddTargetBlank = config.markdownAddTargetBlank ?? false;
 		this.excludePages = config.excludePages ?? [];
-		this.defaultMarkdownLayout = config.defaultMarkdownLayout &&
-			path.resolve(this.projectDir, config.defaultMarkdownLayout);
+		this.markdownLayout = config.markdownLayout &&
+			path.resolve(this.projectDir, config.markdownLayout);
 		this.adapter = config.adapter ?? "apache-static";
 		this.prerender = config.prerender ?? true;
 		this.port = config.port ?? 4321;
@@ -299,7 +301,7 @@ export class Webroot {
 				}
 				const extension = path.extname(entry.name);
 				if (
-					!entry.isFile() || ![".astro", ".md", ".mdx"].includes(extension) || filename === this.defaultMarkdownLayout
+					!entry.isFile() || ![".astro", ".md", ".mdx"].includes(extension) || filename === this.markdownLayout
 				) {
 					continue;
 				}

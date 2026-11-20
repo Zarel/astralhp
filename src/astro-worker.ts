@@ -1,3 +1,4 @@
+import { satteri } from "@astrojs/markdown-satteri";
 import mdx from "@astrojs/mdx";
 import nodeAdapter from "@astrojs/node";
 import type * as astro from "astro";
@@ -28,8 +29,9 @@ interface SerializedWebroot {
 	prerender: boolean;
 	port: number;
 	runtimePath?: string | undefined;
-	defaultMarkdownLayout?: string | undefined;
+	markdownLayout?: string | undefined;
 	excludePages: readonly string[];
+	markdownAddTargetBlank: boolean;
 }
 
 interface WorkerRequest {
@@ -45,8 +47,9 @@ function webrootFrom(data: SerializedWebroot): Webroot {
 			adapter: data.adapter,
 			prerender: data.prerender,
 			port: data.port,
-			defaultMarkdownLayout: data.defaultMarkdownLayout,
+			markdownLayout: data.markdownLayout,
 			excludePages: data.excludePages,
+			markdownAddTargetBlank: data.markdownAddTargetBlank,
 			runtimePath: data.runtimePath,
 		},
 		data.configFile,
@@ -105,6 +108,25 @@ function pageEntrypoints(webroot: Webroot): AstralHPPage[] {
 	});
 }
 
+function markdownWithExternalLinks() {
+	return satteri({
+		hastPlugins: [{
+			name: "astralhp-external-links",
+			element: {
+				filter: ["a"],
+				visit(node, ctx) {
+					const { href, target, rel } = node.properties;
+					if (typeof href !== "string" || !/^(?:https?:)?\/\//i.test(href)) return;
+					if (target && target !== "_blank") return;
+					const tokens = Array.isArray(rel) ? rel : String(rel ?? "").split(/\s+/).filter(Boolean);
+					ctx.setProperty(node, "rel", [...new Set([...tokens, "noopener"])].join(" "));
+					ctx.setProperty(node, "target", "_blank");
+				},
+			},
+		}],
+	});
+}
+
 function astroConfig(
 	webroot: Webroot,
 	options: AstralHPConfigOptions = {},
@@ -119,6 +141,7 @@ function astroConfig(
 		root: webroot.projectCaches,
 		cacheDir: webroot.astroCache,
 		publicDir: webroot.publicDir,
+		markdown: webroot.markdownAddTargetBlank ? { processor: markdownWithExternalLinks() } : {},
 		output: staticOnly ? "static" : "server",
 		...(staticOnly ? {} : {
 			adapter: webroot.adapter === "apache-cgi" ? cgiAdapter() : nodeAdapter({ mode: "middleware" }),
@@ -140,7 +163,7 @@ function astroConfig(
 				entrypointRoot: webroot.projectCaches,
 				staticOnly,
 				prerender: webroot.prerender,
-				defaultMarkdownLayout: webroot.defaultMarkdownLayout,
+				markdownLayout: webroot.markdownLayout,
 			}), mdx(),
 		],
 		vite: {

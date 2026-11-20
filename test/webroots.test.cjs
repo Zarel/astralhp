@@ -202,9 +202,9 @@ for (const adapter of ["apache-static", "apache-proxy", "apache-cgi"]) {
 
 test("renders Markdown and MDX routes with inherited, per-webroot, and explicit page layouts", async t => {
 	const project = fixture(t, {
-		defaultMarkdownLayout: "Article.astro",
+		markdownLayout: "Article.astro",
 		excludePages: ["legacy/", "draft.md"],
-		webroot: ["www", { webroot: "docs", defaultMarkdownLayout: "docs/Guide.astro", adapter: "node", prerender: false }],
+		webroot: ["www", { webroot: "docs", markdownLayout: "docs/Guide.astro", adapter: "node", prerender: false }],
 	});
 	for (const root of ["www", "docs"]) fs.mkdirSync(path.join(project, root, "posts"), { recursive: true });
 	for (const [file, tag] of [["Article.astro", "article"], ["docs/Guide.astro", "main"], ["Other.astro", "aside"]]) {
@@ -278,6 +278,32 @@ Write a paragraph with **emphasis**.
 	}
 });
 
+test("opens external Markdown and MDX links in a new tab when enabled", async t => {
+	const project = fixture(t, { webroot: ["default", { webroot: "enabled", markdownAddTargetBlank: true }] });
+	const source = `## Main rules
+
+[Site](https://example.org) [Network](//example.org/docs)
+[Local](/docs) [Fragment](#main-rules) [Email](mailto:team@example.org)`;
+	for (const site of await Webroot.requireAll(project)) {
+		fs.mkdirSync(site.path);
+		for (const extension of ["md", "mdx"]) fs.writeFileSync(path.join(site.path, extension + "." + extension), source);
+		await build(site);
+		for (const file of ["md.html", "mdx.html"]) {
+			const html = fs.readFileSync(path.join(site.dist, file), "utf8");
+			assert.match(html, /<h2 id="main-rules">/);
+			for (
+				const href of ["https://example.org", "//example.org/docs", "/docs", "#main-rules", "mailto:team@example.org"]
+			) {
+				const link = html.match(/<a [^>]+>/g).find(tag => tag.includes(`href="${href}"`));
+				assert.ok(link, href);
+				const newTab = site.markdownAddTargetBlank && href.includes("//");
+				assert.equal(link.includes('target="_blank"'), newTab);
+				assert.equal(link.includes('rel="noopener"'), newTab);
+			}
+		}
+	}
+});
+
 test("rejects malformed multi-webroot configurations", () => {
 	for (const value of [null, 42, "", {}, [], [""], [null], [42], [{}], [{ webroot: "" }], [["www"]]]) {
 		assert.throws(() => validateConfig({ webroot: value }, "config"), /webroot/);
@@ -285,7 +311,7 @@ test("rejects malformed multi-webroot configurations", () => {
 	assert.throws(() => validateConfig({ webroot: [{ webroot: ["other"] }] }, "config"), /non-empty webroot/);
 	for (const entry of [
 		{ adapter: "unknown" }, { port: -1 }, { runtimePath: "bun" }, { prerender: "false" }, { typo: true },
-		{ defaultMarkdownLayout: "" }, { defaultMarkdownLayout: 42 },
+		{ markdownLayout: "" }, { markdownLayout: 42 }, { markdownAddTargetBlank: "true" },
 		{ excludePages: "legacy" }, { excludePages: [42] }, { excludePages: ["/absolute"] },
 	]) {
 		assert.throws(() => validateConfig({ webroot: [{ webroot: "www", ...entry }] }, "config"));

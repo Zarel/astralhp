@@ -44,7 +44,10 @@ export function validateConfig(value: any, filename: string): Config {
 
 	for (const key of Object.keys(value)) {
 		if (
-			!["webroot", "adapter", "port", "runtimePath", "prerender", "defaultMarkdownLayout", "excludePages"].includes(key)
+			![
+				"webroot", "adapter", "port", "runtimePath", "prerender", "markdownLayout", "excludePages",
+				"markdownAddTargetBlank",
+			].includes(key)
 		) {
 			throw new Error(`Unknown AstralHP configuration option: ${key}`);
 		}
@@ -81,6 +84,9 @@ export function validateConfig(value: any, filename: string): Config {
 	if (value.prerender !== undefined && typeof value.prerender !== "boolean") {
 		throw new Error("AstralHP configuration option prerender must be a boolean");
 	}
+	if (value.markdownAddTargetBlank !== undefined && typeof value.markdownAddTargetBlank !== "boolean") {
+		throw new Error("AstralHP configuration option markdownAddTargetBlank must be a boolean");
+	}
 	if (
 		value.excludePages !== undefined && (
 			!Array.isArray(value.excludePages) ||
@@ -90,10 +96,10 @@ export function validateConfig(value: any, filename: string): Config {
 		throw new Error("AstralHP configuration option excludePages must be an array of webroot-relative paths");
 	}
 	if (
-		value.defaultMarkdownLayout !== undefined &&
-		(typeof value.defaultMarkdownLayout !== "string" || !value.defaultMarkdownLayout.trim())
+		value.markdownLayout !== undefined &&
+		(typeof value.markdownLayout !== "string" || !value.markdownLayout.trim())
 	) {
-		throw new Error("AstralHP configuration option defaultMarkdownLayout must be a non-empty path");
+		throw new Error("AstralHP configuration option markdownLayout must be a non-empty path");
 	}
 	if (
 		value.port !== undefined &&
