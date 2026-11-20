@@ -154,7 +154,53 @@ test("expands paths and overrides, resolves selected webroots, and keeps stable 
 	assert.equal(reordered[1].projectCaches, sites[0].projectCaches);
 });
 
-test("renders Markdown routes with inherited, per-webroot, and explicit page layouts", async t => {
+test("an existing HTML site can build and run before migrating its first page", async t => {
+	const project = fixture(t, { webroot: "www", adapter: "node" });
+	const root = path.join(project, "www");
+	fs.mkdirSync(path.join(root, "guide"), { recursive: true });
+	const home = "<!doctype html><title>Existing site</title>";
+	const guide = "<p>Existing guide</p>";
+	fs.writeFileSync(path.join(root, "index.html"), home);
+	fs.writeFileSync(path.join(root, "guide/index.html"), guide);
+	const site = await Webroot.requireOne(project);
+	await build(site);
+	assert(!fs.existsSync(path.join(site.dist, "index.html")));
+	const port = await freePort();
+	for (const launch of [dev, start]) {
+		const worker = await launch(site, { port });
+		try {
+			for (const [url, expected] of [["/?v=1", home], ["/guide/", guide], ["/guide/index.html", guide]]) {
+				const response = await fetch(`http://localhost:${port}${url}`);
+				assert.equal(response.status, 200);
+				assert.equal(await response.text(), expected);
+			}
+			assert.equal((await fetch(`http://localhost:${port}/missing`)).status, 404);
+		} finally {
+			await worker.close();
+		}
+	}
+	fs.unlinkSync(path.join(root, "guide/index.html"));
+	fs.writeFileSync(path.join(root, "guide/index.astro"), "<h1>Migrated guide</h1>");
+	await build(site);
+	assert.match(fs.readFileSync(site.resolveDistFile("/guide/"), "utf8"), /Migrated guide/);
+	assert.equal(fs.readFileSync(path.join(root, "index.html"), "utf8"), home);
+});
+
+for (const adapter of ["apache-static", "apache-proxy", "apache-cgi"]) {
+	test(`${adapter} builds an HTML-only webroot`, async t => {
+		const project = fixture(t, { adapter });
+		fs.writeFileSync(path.join(project, "index.html"), "<p>Existing site</p>");
+		const site = await Webroot.requireOne(project);
+		await build(site);
+		assert(fs.statSync(site.dist).isDirectory());
+		assert(!fs.existsSync(path.join(site.dist, "index.html")));
+		const rules = fs.readFileSync(path.join(project, ".htaccess"), "utf8");
+		assert.match(rules, /BEGIN ASTRALHP/);
+		assert.doesNotMatch(rules, /ProxyPreserveHost|ExecCGI/);
+	});
+}
+
+test("renders Markdown and MDX routes with inherited, per-webroot, and explicit page layouts", async t => {
 	const project = fixture(t, {
 		defaultMarkdownLayout: "Article.astro",
 		webroot: ["www", { webroot: "docs", defaultMarkdownLayout: "docs/Guide.astro", adapter: "node", prerender: false }],
@@ -172,6 +218,22 @@ test("renders Markdown routes with inherited, per-webroot, and explicit page lay
 		path.join(project, "www/posts/news.md"), "---\nlayout: ../../Other.astro\ntitle: News\n---\n**Update**",
 	);
 	fs.writeFileSync(path.join(project, "www/plain.astro"), "<p>Plain Astro</p>");
+	fs.writeFileSync(path.join(project, "Callout.astro"), "<blockquote><slot /></blockquote>");
+	const mdx = `import Callout from '../../Callout.astro';
+
+<section class="whatever">
+
+## Getting started
+
+Write a paragraph with **emphasis**.
+
+<Callout>Bring your *favorite* editor.</Callout>
+
+</section>`;
+	for (const root of ["www", "docs"]) {
+		fs.writeFileSync(path.join(project, root, "posts/guide.mdx"), mdx);
+	}
+	fs.writeFileSync(path.join(project, "www/override.mdx"), "---\nlayout: ../Other.astro\ntitle: Override\n---\n# Hi");
 	const [www, docs] = await Webroot.requireAll(project);
 	for (const site of [www, docs]) await build(site);
 	for (const site of [www, docs]) assert(!fs.existsSync(path.join(site.astroCache, "markdown")));
@@ -180,8 +242,17 @@ test("renders Markdown routes with inherited, per-webroot, and explicit page lay
 	assert.match(html(www, "brief.html"), /<article>[\s\S]*<strong>Short post<\/strong>/);
 	assert.match(html(www, "posts/news.html"), /<aside data-title="News">[\s\S]*<strong>Update<\/strong>/);
 	assert.doesNotMatch(html(www, "plain.html"), /<article/);
+	function checkMdx(content, layoutTag) {
+		assert.match(content, new RegExp(`<${layoutTag}\\b[^>]*>\\s*<section class="whatever"`));
+		assert.match(content, /<h2[^>]*>Getting started<\/h2>/);
+		assert.match(content, /<strong>emphasis<\/strong>/);
+		assert.match(content, /<blockquote[^>]*>Bring your <em>favorite<\/em> editor\.<\/blockquote>/);
+	}
+	checkMdx(html(www, "posts/guide.html"), "article");
+	assert.match(html(www, "override.html"), /<aside data-title="Override">/);
 	assert.equal(docs.resolveDistFile("/posts"), null);
 	assert.equal(docs.resolveStaticFile("/posts/index.md"), null);
+	assert.equal(docs.resolveStaticFile("/posts/guide.mdx"), null);
 	const port = await freePort();
 	for (const launch of [dev, start]) {
 		const server = await launch(docs, { port });
@@ -189,6 +260,9 @@ test("renders Markdown routes with inherited, per-webroot, and explicit page lay
 			const response = await fetch(`http://localhost:${port}/posts`);
 			assert.equal(response.status, 200);
 			assert.match(await response.text(), /<main data-title="Welcome"/);
+			const guide = await fetch(`http://localhost:${port}/posts/guide`);
+			assert.equal(guide.status, 200);
+			checkMdx(await guide.text(), "main");
 			const post = await fetch(`http://localhost:${port}/posts/example`);
 			assert.equal(post.status, 200);
 			assert.match(await post.text(), /<main\b[^>]*>[\s\S]*>Dynamic post<\/h1>/);

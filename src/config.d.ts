@@ -8,7 +8,7 @@ export interface WebrootConfig {
 	 * @default '.'
 	 */
 	webroot?: string;
-	/** Default layout for Markdown pages, relative to the config file. */
+	/** Default layout for .md and .mdx pages, relative to the config file. */
 	defaultMarkdownLayout?: string | undefined;
 	/**
 	 * Whether pages are rendered at build time by default. A page's

@@ -41,6 +41,11 @@ export interface AstralHPConfigOptions {
 }
 
 function withMarkdownLayout(processor: MarkdownProcessor, layout: string, pages: Set<string>): MarkdownProcessor {
+	function pageFrontmatter(filename: string, frontmatter: Record<string, any> = {}) {
+		if ("layout" in frontmatter || !pages.has(canonicalPath(filename))) return frontmatter;
+		const relative = path.relative(path.dirname(filename), layout).split(path.sep).join("/");
+		return { ...frontmatter, layout: "./" + relative };
+	}
 	return {
 		...processor,
 		async createRenderer(options) {
@@ -48,13 +53,17 @@ function withMarkdownLayout(processor: MarkdownProcessor, layout: string, pages:
 			return {
 				render(source, context) {
 					if (context?.fileURL) {
-						const filename = fileURLToPath(context.fileURL);
-						if (pages.has(canonicalPath(filename))) {
-							const relative = path.relative(path.dirname(filename), layout).split(path.sep).join("/");
-							context = { ...context, frontmatter: { layout: "./" + relative, ...context.frontmatter } };
-						}
+						context = { ...context, frontmatter: pageFrontmatter(fileURLToPath(context.fileURL), context.frontmatter) };
 					}
 					return renderer.render(source, context);
+				},
+			};
+		},
+		async createMdxRenderer(options, mdxOptions) {
+			const renderer = await processor.createMdxRenderer!(options, mdxOptions);
+			return {
+				process(source, filename, frontmatter) {
+					return renderer.process(source, filename, pageFrontmatter(filename, frontmatter));
 				},
 			};
 		},
@@ -81,6 +90,8 @@ export function astralhpIntegration(
 		name: "astralhp",
 		hooks: {
 			"astro:config:setup"({ injectRoute, config, updateConfig }) {
+				// Astro checks for src/pages when there are no injected routes.
+				if (!pages.length) fs.mkdirSync(new URL("pages/", config.srcDir), { recursive: true });
 				if (options.defaultMarkdownLayout) {
 					const processor = config.markdown.processor as MarkdownProcessor;
 					updateConfig({
@@ -284,7 +295,7 @@ export class Webroot {
 				}
 				const extension = path.extname(entry.name);
 				if (
-					!entry.isFile() || (extension !== ".astro" && extension !== ".md") || filename === this.defaultMarkdownLayout
+					!entry.isFile() || ![".astro", ".md", ".mdx"].includes(extension) || filename === this.defaultMarkdownLayout
 				) {
 					continue;
 				}
@@ -327,10 +338,11 @@ export class Webroot {
 	}
 
 	resolveStaticFile(requestUrl: string | undefined): string | null {
-		const filename = this.resolveFile(requestUrl);
+		const pathname = requestUrl?.split(/[?#]/, 1)[0];
+		const filename = this.resolveFile(pathname?.endsWith("/") ? pathname + "index.html" : pathname);
 		if (
 			!filename ||
-			[".astro", ".md", ".ts", ".tsx"].includes(path.extname(filename).toLowerCase())
+			[".astro", ".md", ".mdx", ".ts", ".tsx"].includes(path.extname(filename).toLowerCase())
 		) {
 			return null;
 		}

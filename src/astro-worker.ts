@@ -1,3 +1,4 @@
+import mdx from "@astrojs/mdx";
 import nodeAdapter from "@astrojs/node";
 import type * as astro from "astro";
 import path from "node:path";
@@ -97,7 +98,7 @@ function outsideRootEntrypoints(
 function pageEntrypoints(webroot: Webroot): AstralHPPage[] {
 	const entrypoint = fileURLToPath(new URL("./components/MarkdownPage.astro", import.meta.url));
 	return webroot.scanPages().map(page => {
-		if (!page.entrypoint.endsWith(".md")) return page;
+		if (page.entrypoint.endsWith(".astro")) return page;
 		return { ...page, markdownFile: page.entrypoint, entrypoint };
 	});
 }
@@ -110,9 +111,6 @@ function astroConfig(
 	legacyCache: ScriptCache = new Map(),
 ): astro.AstroInlineConfig {
 	const pages = pageEntrypoints(webroot);
-	if (!pages.length) {
-		throw new Error(`No .astro or .md pages found in ${webroot.path}`);
-	}
 	const staticOnly = webroot.adapter === "apache-static";
 
 	return {
@@ -134,13 +132,15 @@ function astroConfig(
 		devToolbar: {
 			enabled: false,
 		},
-		integrations: [astralhpIntegration(pages, {
-			...options,
-			entrypointRoot: webroot.projectCaches,
-			staticOnly,
-			prerender: webroot.prerender,
-			defaultMarkdownLayout: webroot.defaultMarkdownLayout,
-		})],
+		integrations: [
+			astralhpIntegration(pages, {
+				...options,
+				entrypointRoot: webroot.projectCaches,
+				staticOnly,
+				prerender: webroot.prerender,
+				defaultMarkdownLayout: webroot.defaultMarkdownLayout,
+			}), mdx(),
+		],
 		vite: {
 			root: webroot.path,
 			cacheDir: webroot.viteCache,
