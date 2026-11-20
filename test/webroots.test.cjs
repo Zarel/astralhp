@@ -203,12 +203,16 @@ for (const adapter of ["apache-static", "apache-proxy", "apache-cgi"]) {
 test("renders Markdown and MDX routes with inherited, per-webroot, and explicit page layouts", async t => {
 	const project = fixture(t, {
 		defaultMarkdownLayout: "Article.astro",
+		excludePages: ["legacy/", "draft.md"],
 		webroot: ["www", { webroot: "docs", defaultMarkdownLayout: "docs/Guide.astro", adapter: "node", prerender: false }],
 	});
 	for (const root of ["www", "docs"]) fs.mkdirSync(path.join(project, root, "posts"), { recursive: true });
 	for (const [file, tag] of [["Article.astro", "article"], ["docs/Guide.astro", "main"], ["Other.astro", "aside"]]) {
 		fs.writeFileSync(path.join(project, file), `<${tag} data-title={Astro.props.frontmatter.title}><slot /></${tag}>`);
 	}
+	fs.mkdirSync(path.join(project, "www/legacy"));
+	fs.writeFileSync(path.join(project, "www/legacy/old.md"), "# Legacy");
+	fs.writeFileSync(path.join(project, "www/draft.md"), "# Draft");
 	const page = "---\ntitle: Welcome\n---\n# Hello";
 	fs.writeFileSync(path.join(project, "www/index.md"), page);
 	fs.writeFileSync(path.join(project, "www/brief.md"), "**Short post**");
@@ -237,6 +241,8 @@ Write a paragraph with **emphasis**.
 	const [www, docs] = await Webroot.requireAll(project);
 	for (const site of [www, docs]) await build(site);
 	for (const site of [www, docs]) assert(!fs.existsSync(path.join(site.astroCache, "markdown")));
+	assert(!fs.existsSync(path.join(www.dist, "legacy")));
+	assert(!fs.existsSync(path.join(www.dist, "draft.html")));
 	const html = (site, name) => fs.readFileSync(path.join(site.dist, name), "utf8");
 	assert.match(html(www, "index.html"), /<article data-title="Welcome">\s*<h1[^>]*>Hello<\/h1>/);
 	assert.match(html(www, "brief.html"), /<article>[\s\S]*<strong>Short post<\/strong>/);
@@ -280,6 +286,7 @@ test("rejects malformed multi-webroot configurations", () => {
 	for (const entry of [
 		{ adapter: "unknown" }, { port: -1 }, { runtimePath: "bun" }, { prerender: "false" }, { typo: true },
 		{ defaultMarkdownLayout: "" }, { defaultMarkdownLayout: 42 },
+		{ excludePages: "legacy" }, { excludePages: [42] }, { excludePages: ["/absolute"] },
 	]) {
 		assert.throws(() => validateConfig({ webroot: [{ webroot: "www", ...entry }] }, "config"));
 	}

@@ -135,6 +135,7 @@ export function astralhpIntegration(
 export class Webroot {
 	readonly path: string;
 	readonly projectDir: string;
+	readonly excludePages: readonly string[];
 	readonly defaultMarkdownLayout: string | undefined;
 	readonly configFile: string | null;
 	readonly adapter: Adapter;
@@ -171,6 +172,7 @@ export class Webroot {
 			throw new Error("Webroot requires config.webroot or a config file");
 		}
 		this.projectDir = findProjectDir(this.path, this.configFile);
+		this.excludePages = config.excludePages ?? [];
 		this.defaultMarkdownLayout = config.defaultMarkdownLayout &&
 			path.resolve(this.projectDir, config.defaultMarkdownLayout);
 		this.adapter = config.adapter ?? "apache-static";
@@ -284,11 +286,13 @@ export class Webroot {
 	scanPages(): AstralHPPage[] {
 		const pages: AstralHPPage[] = [];
 		const patterns = new Map<string, string>();
+		const excluded = new Set(this.excludePages.map(entry => path.resolve(this.path, entry)));
 
 		const scan = (directory: string): void => {
 			for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
 				if (entry.name.startsWith(".")) continue;
 				const filename = path.join(directory, entry.name);
+				if (excluded.has(filename)) continue;
 				if (entry.isDirectory()) {
 					if (!PRIVATE_DIRECTORIES.has(entry.name.toLowerCase())) scan(filename);
 					continue;
@@ -316,7 +320,7 @@ export class Webroot {
 			}
 		};
 
-		scan(this.path);
+		if (!excluded.has(this.path)) scan(this.path);
 		return pages.sort((a, b) => a.pattern.localeCompare(b.pattern));
 	}
 

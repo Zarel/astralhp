@@ -43,7 +43,9 @@ export function validateConfig(value: any, filename: string): Config {
 	}
 
 	for (const key of Object.keys(value)) {
-		if (!["webroot", "adapter", "port", "runtimePath", "prerender", "defaultMarkdownLayout"].includes(key)) {
+		if (
+			!["webroot", "adapter", "port", "runtimePath", "prerender", "defaultMarkdownLayout", "excludePages"].includes(key)
+		) {
 			throw new Error(`Unknown AstralHP configuration option: ${key}`);
 		}
 	}
@@ -78,6 +80,14 @@ export function validateConfig(value: any, filename: string): Config {
 	}
 	if (value.prerender !== undefined && typeof value.prerender !== "boolean") {
 		throw new Error("AstralHP configuration option prerender must be a boolean");
+	}
+	if (
+		value.excludePages !== undefined && (
+			!Array.isArray(value.excludePages) ||
+			value.excludePages.some((entry: unknown) => typeof entry !== "string" || !entry.trim() || path.isAbsolute(entry))
+		)
+	) {
+		throw new Error("AstralHP configuration option excludePages must be an array of webroot-relative paths");
 	}
 	if (
 		value.defaultMarkdownLayout !== undefined &&

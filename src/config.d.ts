@@ -8,6 +8,8 @@ export interface WebrootConfig {
 	 * @default '.'
 	 */
 	webroot?: string;
+	/** Files or directories to skip during page discovery, relative to the webroot. */
+	excludePages?: readonly string[];
 	/** Default layout for .md and .mdx pages, relative to the config file. */
 	defaultMarkdownLayout?: string | undefined;
 	/**
