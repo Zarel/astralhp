@@ -51,10 +51,9 @@ export class AssetBundles {
 
 	private async compile(source: string): Promise<Bundle> {
 		const scss = source.endsWith(".scss");
-		const entry = path.relative(this.webroot.path, source).replace(
-			scss ? /\.scss$/ : /\.(?:tsx?|jsx|cjs)$/,
-			scss ? ".css" : ".js",
-		);
+		const entry = path.relative(this.webroot.path, source)
+			.replace(/\.scss$/, ".css")
+			.replace(/\.(?:[cm]?js|jsx|tsx?)$/, ".min.js");
 		const owner = this.owners.get(entry);
 		if (owner && owner !== source) {
 			throw new Error(`Asset output collision: ${owner} and ${source} both produce ${entry}`);

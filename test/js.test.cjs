@@ -11,6 +11,8 @@ const { AstralHPServer } = require("../dist/live-server.js");
 const { AssetBundles } = require("../dist/bundles.js");
 const { EventEmitter } = require("node:events");
 
+const plainJS = 'import { message } from "./dependency.js"; globalThis.modernMessage = message;';
+
 function fixture(t) {
 	const root = fs.mkdtempSync(path.resolve(__dirname, "../.astralhp-test-js-"));
 	t.after(() => fs.rmSync(root, { recursive: true, force: true }));
@@ -32,10 +34,7 @@ export async function answer(input?: { value?: string }) {
 export const load = () => import("./lazy.ts");
 `,
 	);
-	fs.writeFileSync(
-		path.join(root, "scripts/plain.js"),
-		'import { message } from "./dependency.js"; globalThis.modernMessage = message;',
-	);
+	fs.writeFileSync(path.join(root, "scripts/plain.js"), plainJS);
 	fs.writeFileSync(path.join(root, "scripts/unused.ts"), "not valid TypeScript !!!");
 	fs.mkdirSync(path.join(root, ".components"));
 	fs.writeFileSync(
@@ -66,7 +65,7 @@ export const prerender = false;
 }
 
 function bundleURL(html, name = "app") {
-	const match = html.match(new RegExp(`src="(/scripts/${name}\\.js\\?v=[a-f0-9]+)"`));
+	const match = html.match(new RegExp(`src="(/scripts/${name}\\.min\\.js\\?v=[a-f0-9]+)"`));
 	assert(match, html);
 	return match[1];
 }
@@ -81,12 +80,15 @@ test("JS bundles use stable paths, include dependencies and CSS, and render on s
 	const css = html.match(/href="(\/scripts\/_assets\/[^"]+\.css)"/);
 	assert(css, html);
 	assert(fs.existsSync(path.join(site.dist, css[1])));
-	assert(!fs.existsSync(path.join(site.dist, "scripts/unused.js")));
-	const source = fs.readFileSync(path.join(site.dist, "scripts/app.js"), "utf8");
+	assert(!fs.existsSync(path.join(site.dist, "scripts/unused.min.js")));
+	const source = fs.readFileSync(path.join(site.dist, "scripts/app.min.js"), "utf8");
+	assert.match(source, /sourceMappingURL=app\.min\.js\.map/);
+	const map = JSON.parse(fs.readFileSync(path.join(site.dist, "scripts/app.min.js.map"), "utf8"));
+	assert(map.sources.some(filename => path.basename(filename) === "app.ts"));
 	assert.match(source, /dependency-one/);
 	assert.match(source, /_chunks\/lazy-/);
 	assert.doesNotMatch(source, /input\?:|\.\?|\?\./);
-	const module = await import(pathToFileURL(path.join(site.dist, "scripts/app.js")).href);
+	const module = await import(pathToFileURL(path.join(site.dist, "scripts/app.min.js")).href);
 	assert.equal(await module.answer(), "dependency-one");
 	assert.equal(module.encoded, "AAAA");
 	assert.equal((await module.load()).lazy, "lazy-one");
@@ -98,6 +100,7 @@ test("JS bundles use stable paths, include dependencies and CSS, and render on s
 	try {
 		const base = `http://127.0.0.1:${server.server.address().port}`;
 		assert.equal(bundleURL(await (await fetch(`${base}/live`)).text()), url);
+		assert.equal(await (await fetch(`${base}/scripts/plain.js`)).text(), plainJS);
 		const response = await fetch(`${base}${bundleURL(html, "plain")}`);
 		assert.equal(response.status, 200);
 		assert.doesNotMatch(await response.text(), /from ["']\.\/dependency.js/);
@@ -130,12 +133,13 @@ const src = "/scripts/app.ts";
 <JS src={src} />`,
 	);
 	await assert.rejects(build(site), /requires a literal src/);
+	fs.writeFileSync(path.join(site.path, "scripts/app.min.ts"), "console.log(1);");
 	fs.writeFileSync(
 		path.join(site.path, "index.astro"),
 		`---
 import { JS, ES3 } from "astralhp/components";
 ---
-<JS src="/scripts/app.ts" /><ES3 src="/scripts/app.ts" />`,
+<JS src="/scripts/app.ts" /><ES3 src="/scripts/app.min.ts" />`,
 	);
 	await assert.rejects(build(site), /JS and ES3 both produce/);
 });
@@ -183,7 +187,7 @@ export const prerender = false;
 			const module = await import(`data:text/javascript;base64,${Buffer.from(script[2]).toString("base64")}`);
 			assert.equal(await module.answer(), "dependency-one");
 			assert.equal(module.text, "</ScRiPt><script>bad()</script><!--<script>");
-			assert.equal(module.location, "https://example.test/scripts/app.js");
+			assert.equal(module.location, "https://example.test/scripts/app.min.js");
 		} finally {
 			delete globalThis.document;
 		}
@@ -210,7 +214,7 @@ export const prerender = false;
 	}
 });
 
-test("JS development serves bundles at their original paths and rebuilds imported dependencies", async t => {
+test("JS development serves sources and minified bundles and rebuilds imported dependencies", async t => {
 	const site = fixture(t);
 	fs.appendFileSync(path.join(site.path, ".components/Assets.astro"), '\n<Script src="../scripts/app.ts" inline />');
 	const reservation = net.createServer();
@@ -225,6 +229,9 @@ test("JS development serves bundles at their original paths and rebuilds importe
 		const initial = await response.text();
 		assert.match(initial, /dependency-one/);
 		const before = bundleURL(initial);
+		const home = await (await fetch(base)).text();
+		assert.match(await (await fetch(base + bundleURL(home, "plain"))).text(), /dependency-one/);
+		assert.equal(await (await fetch(`${base}/scripts/plain.js`)).text(), plainJS);
 		assert.match(await (await fetch(`${base}${before}`)).text(), /dependency-one/);
 		fs.writeFileSync(path.join(site.path, "scripts/dependency.js"), 'export const message = "dev-updated";');
 		let after = before;
@@ -236,7 +243,7 @@ test("JS development serves bundles at their original paths and rebuilds importe
 		assert.notEqual(after, before);
 		assert.match(await (await fetch(`${base}/live`)).text(), /dev-updated/);
 		assert.match(await (await fetch(`${base}${after}`)).text(), /dev-updated/);
-		assert(!fs.existsSync(path.join(site.dist, "scripts/unused.js")));
+		assert(!fs.existsSync(path.join(site.dist, "scripts/unused.min.js")));
 	} finally {
 		await worker.close();
 	}
@@ -265,5 +272,5 @@ test("JS development recovers after an imported dependency has a syntax error", 
 	fs.writeFileSync(dependency, 'export const message = "repaired";');
 	watcher.emit("all", "change", dependency);
 	await reloaded;
-	assert.match(fs.readFileSync(path.join(site.dist, "scripts/app.js"), "utf8"), /repaired/);
+	assert.match(fs.readFileSync(path.join(site.dist, "scripts/app.min.js"), "utf8"), /repaired/);
 });

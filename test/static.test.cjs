@@ -54,7 +54,7 @@ export function getStaticPaths() { return [{ params: { id: "about" } }]; }
 	const html = fs.readFileSync(path.join(site.dist, "index.html"), "utf8");
 	assert.match(html, /Static home/);
 	assert.equal(fs.readFileSync(path.join(site.dist, "feed.xml"), "utf8"), "<feed/>");
-	for (const file of ["style.css", "app.js", "legacy.js"]) {
+	for (const file of ["style.css", "app.min.js", "legacy.js"]) {
 		assert(fs.statSync(path.join(site.dist, file)).isFile());
 		assert(html.includes(`/${file}?v=`));
 	}
