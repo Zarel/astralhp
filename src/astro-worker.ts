@@ -31,6 +31,7 @@ interface SerializedWebroot {
 	runtimePath?: string | undefined;
 	markdownLayout?: string | undefined;
 	excludePages: readonly string[];
+	serveSourceFiles: boolean;
 	markdownAddTargetBlank: boolean;
 }
 
@@ -49,6 +50,7 @@ function webrootFrom(data: SerializedWebroot): Webroot {
 			port: data.port,
 			markdownLayout: data.markdownLayout,
 			excludePages: data.excludePages,
+			serveSourceFiles: data.serveSourceFiles,
 			markdownAddTargetBlank: data.markdownAddTargetBlank,
 			runtimePath: data.runtimePath,
 		},

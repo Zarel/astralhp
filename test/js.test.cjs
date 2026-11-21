@@ -6,14 +6,14 @@ const net = require("node:net");
 const path = require("node:path");
 const test = require("node:test");
 const { pathToFileURL } = require("node:url");
-const { build, dev, Webroot } = require("astralhp");
+const { build, dev, start, Webroot } = require("astralhp");
 const { AstralHPServer } = require("../dist/live-server.js");
 const { AssetBundles } = require("../dist/bundles.js");
 const { EventEmitter } = require("node:events");
 
 const plainJS = 'import { message } from "./dependency.js"; globalThis.modernMessage = message;';
 
-function fixture(t) {
+function fixture(t, options = {}) {
 	const root = fs.mkdtempSync(path.resolve(__dirname, "../.astralhp-test-js-"));
 	t.after(() => fs.rmSync(root, { recursive: true, force: true }));
 	fs.mkdirSync(path.join(root, "scripts"));
@@ -61,7 +61,7 @@ export const prerender = false;
 ---
 <Assets />`,
 	);
-	return new Webroot({ webroot: root, adapter: "apache-proxy" });
+	return new Webroot({ webroot: root, adapter: "apache-proxy", ...options });
 }
 
 function bundleURL(html, name = "app") {
@@ -119,6 +119,46 @@ test("JS bundles use stable paths, include dependencies and CSS, and render on s
 	fs.writeFileSync(path.join(site.path, "scripts/lazy.ts"), 'export const lazy: string = "lazy-two";');
 	await build(site);
 	assert.notEqual(bundleURL(fs.readFileSync(path.join(site.dist, "index.html"), "utf8")), updated);
+});
+
+test("serveSourceFiles can hide sources and maps while serving bundles, chunks, and minified files", async t => {
+	const site = fixture(t, { serveSourceFiles: false });
+	for (const file of ["vendor.min.js", "theme.scss", "view.tsx", "vendor.min.js.map"]) {
+		fs.writeFileSync(path.join(site.path, file), "fixture");
+	}
+	fs.writeFileSync(path.join(site.path, "version.js.astro.js"), 'export const GET = () => new Response("v1");');
+	await build(site);
+	const chunk = fs.readdirSync(path.join(site.dist, "scripts/_chunks")).find(file => file.endsWith(".js"));
+	assert(chunk);
+	const rules = fs.readFileSync(path.join(site.path, ".htaccess"), "utf8");
+	const mapRule = rules.split("\n").findIndex(line => line.startsWith("RewriteRule") && line.includes("scss|map"));
+	const distRule = rules.split("\n").findIndex(line => line.includes('".caches/dist/$1" [END]'));
+	const jsRule = rules.split("\n").findIndex(line => line.startsWith("RewriteRule") && line.includes("(?<!"));
+	assert(mapRule >= 0 && mapRule < distRule && distRule < jsRule);
+
+	const reservation = net.createServer();
+	await new Promise(resolve => reservation.listen(0, "127.0.0.1", resolve));
+	const port = reservation.address().port;
+	await new Promise(resolve => reservation.close(resolve));
+	for (const launch of [dev, start]) {
+		const worker = await launch(site, { port });
+		try {
+			const get = pathname => fetch(`http://localhost:${port}/${pathname}`);
+			const html = await (await get("")).text();
+			assert.match(await (await get(bundleURL(html).slice(1))).text(), /dependency-one/);
+			assert.match(await (await get("scripts/_chunks/" + chunk)).text(), /lazy-one/);
+			assert.equal(await (await get("vendor.min.js")).text(), "fixture");
+			assert.equal(await (await get("version.js")).text(), "v1");
+			for (const file of [
+				"scripts/app.ts", "view.tsx", "scripts/plain.js?v=1", "theme.scss",
+				"vendor.min.js.map", "scripts/app.min.js.map", "scripts/_chunks/" + chunk + ".map",
+			]) {
+				assert([403, 404].includes((await get(file)).status), file);
+			}
+		} finally {
+			await worker.close();
+		}
+	}
 });
 
 test("JS rejects computed sources and conflicting ES3 output paths", async t => {

@@ -10,6 +10,8 @@ export interface WebrootConfig {
 	webroot?: string;
 	/** Files or directories to skip during page discovery, relative to the webroot. */
 	excludePages?: readonly string[];
+	/** Serve original scripts, SCSS, and source maps over HTTP. Defaults to true. */
+	serveSourceFiles?: boolean;
 	/** Add `target="blank" rel="noopener"` to external Markdown links. Defaults to false. */
 	markdownAddTargetBlank?: boolean;
 	/** Default Astro layout for `.md` and `.mdx` pages, relative to the config file. */

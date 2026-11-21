@@ -376,7 +376,7 @@ test("rejects malformed multi-webroot configurations", () => {
 	assert.throws(() => validateConfig({ webroot: [{ webroot: ["other"] }] }, "config"), /non-empty webroot/);
 	for (const entry of [
 		{ adapter: "unknown" }, { port: -1 }, { runtimePath: "bun" }, { prerender: "false" }, { typo: true },
-		{ markdownLayout: "" }, { markdownLayout: 42 }, { markdownAddTargetBlank: "true" },
+		{ markdownLayout: "" }, { markdownLayout: 42 }, { markdownAddTargetBlank: "true" }, { serveSourceFiles: "false" },
 		{ excludePages: "legacy" }, { excludePages: [42] }, { excludePages: ["/absolute"] },
 	]) {
 		assert.throws(() => validateConfig({ webroot: [{ webroot: "www", ...entry }] }, "config"));

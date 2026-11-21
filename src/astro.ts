@@ -15,6 +15,7 @@ interface SerializedWebroot {
 	runtimePath?: string | undefined;
 	markdownLayout?: string | undefined;
 	excludePages: readonly string[];
+	serveSourceFiles: boolean;
 	markdownAddTargetBlank: boolean;
 }
 
@@ -47,6 +48,7 @@ function serializeWebroot(webroot: Webroot): SerializedWebroot {
 		prerender: webroot.prerender,
 		markdownLayout: webroot.markdownLayout,
 		excludePages: webroot.excludePages,
+		serveSourceFiles: webroot.serveSourceFiles,
 		markdownAddTargetBlank: webroot.markdownAddTargetBlank,
 		port: webroot.port,
 		runtimePath: webroot.runtimePath,

@@ -46,7 +46,7 @@ export function validateConfig(value: any, filename: string): Config {
 		if (
 			![
 				"webroot", "adapter", "port", "runtimePath", "prerender", "markdownLayout", "excludePages",
-				"markdownAddTargetBlank",
+				"markdownAddTargetBlank", "serveSourceFiles",
 			].includes(key)
 		) {
 			throw new Error(`Unknown AstralHP configuration option: ${key}`);
@@ -80,6 +80,9 @@ export function validateConfig(value: any, filename: string): Config {
 		throw new Error(
 			'AstralHP configuration option adapter must be "node", "apache-proxy", "apache-cgi", or "apache-static"',
 		);
+	}
+	if (value.serveSourceFiles !== undefined && typeof value.serveSourceFiles !== "boolean") {
+		throw new Error("AstralHP configuration option serveSourceFiles must be a boolean");
 	}
 	if (value.prerender !== undefined && typeof value.prerender !== "boolean") {
 		throw new Error("AstralHP configuration option prerender must be a boolean");

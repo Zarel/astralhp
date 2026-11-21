@@ -21,6 +21,8 @@ export { validateConfig } from "./config-loader.js";
 
 const PRIVATE_DIRECTORIES = new Set([".caches", ".server", "node_modules"]);
 const ENDPOINT_SUFFIX = /\.astro\.[jt]s$/i;
+export const SOURCE_SUFFIX: RegExp = /\.(?:[cm]?tsx?|jsx|scss|map)$/i;
+export const UNMINIFIED_JS: RegExp = /(?<!\.min)\.[cm]?js$/i;
 const ROUTE_SUFFIXES = [".astro", ".md", ".mdx", ".astro.js", ".astro.ts"];
 
 export interface AstralHPPage {
@@ -143,6 +145,7 @@ export function astralhpIntegration(
 export class Webroot {
 	readonly path: string;
 	readonly projectDir: string;
+	readonly serveSourceFiles: boolean;
 	readonly markdownAddTargetBlank: boolean;
 	readonly excludePages: readonly string[];
 	readonly markdownLayout: string | undefined;
@@ -181,6 +184,7 @@ export class Webroot {
 			throw new Error("Webroot requires config.webroot or a config file");
 		}
 		this.projectDir = findProjectDir(this.path, this.configFile);
+		this.serveSourceFiles = config.serveSourceFiles ?? true;
 		this.markdownAddTargetBlank = config.markdownAddTargetBlank ?? false;
 		this.excludePages = config.excludePages ?? [];
 		this.markdownLayout = config.markdownLayout &&
@@ -290,7 +294,18 @@ export class Webroot {
 
 	isPrivateRequest(requestUrl: string | undefined): boolean {
 		const parts = this.requestPathParts(requestUrl);
-		return parts === null || this.hasPrivateDirectory(parts) || ENDPOINT_SUFFIX.test(parts.at(-1) ?? "");
+		if (parts === null || this.hasPrivateDirectory(parts)) return true;
+		const name = parts.at(-1) ?? "";
+		if (ENDPOINT_SUFFIX.test(name)) return true;
+		if (this.serveSourceFiles) return false;
+		if (SOURCE_SUFFIX.test(name)) return true;
+
+		const file = this.resolveFile(requestUrl);
+		// Generated JS (including chunks and ES3 scripts) can use an ordinary .js URL.
+		if (file && (SOURCE_SUFFIX.test(file) || UNMINIFIED_JS.test(file) || UNMINIFIED_JS.test(name))) {
+			return !this.resolveDistFile(requestUrl);
+		}
+		return parts[0] === "@fs" && UNMINIFIED_JS.test(name);
 	}
 
 	scanPages(): AstralHPPage[] {
@@ -354,6 +369,7 @@ export class Webroot {
 		const filename = this.resolveFile(pathname?.endsWith("/") ? pathname + "index.html" : pathname);
 		if (
 			!filename || ENDPOINT_SUFFIX.test(filename) ||
+			(!this.serveSourceFiles && (SOURCE_SUFFIX.test(filename) || UNMINIFIED_JS.test(filename))) ||
 			[".astro", ".md", ".mdx"].includes(path.extname(filename).toLowerCase())
 		) {
 			return null;
@@ -377,7 +393,7 @@ export class Webroot {
 
 		for (const candidate of candidates) {
 			const filename = this.resolveContainedFile(this.dist, candidate);
-			if (filename) return filename;
+			if (filename && (this.serveSourceFiles || !SOURCE_SUFFIX.test(filename))) return filename;
 		}
 		return null;
 	}
