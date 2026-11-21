@@ -82,6 +82,8 @@ The main difference is that AstralHP doesn't enforce the directory layout Astro
 does; instead, it uses file extensions to distinguish between `src/pages/` and
 `public/`.
 
+For more file types and what AstralHP does with them, see [DOCS.md](DOCS.md)
+
 ## Configuration
 
 AstralHP does not need a config file in `apache-static` mode (an empty
@@ -182,131 +184,6 @@ The host needs to support:
 - `.htaccess` with `Options` overrides
 
 `runtimePath` must not contain whitespace.
-
-## CSS and JS
-
-AstralHP supports Astro's usual ways to include CSS and JS, but if you would
-prefer a more PHP-style approach, we offer `<CSS>` and `<JS>` components
-that keep the source file's URL path, changing the extension when needed,
-and add a cachebuster. `<CSS>` serves plain CSS unchanged or compiles SCSS;
-`<JS>` bundles JavaScript or TypeScript and its imports for modern browsers.
-
-```astro
----
-import { CSS, JS } from "astralhp/components";
----
-<CSS src="/style.css" />
-<JS src="/js/app.tsx" defer />
-```
-
-`<CSS>` renders a `<link rel="stylesheet">` and `<JS>` renders a
-`<script src>`. Both add a cachebuster based on hashed contents:
-
-```html
-<link rel="stylesheet" href="/style.css?v=0123456789abcdef">
-<script type="module" src="/js/app.js?v=0123456789abcdef" defer></script>
-```
-
-The source can be absolute (relative to the webroot) or relative to the Astro
-component:
-
-```astro
-<CSS src="/style/global.css" />
-<CSS src="style.css" />
-<CSS src="../shared.css" />
-```
-
-The resolved file must be inside the webroot. Missing files, existing queries,
-fragments, and external URLs are errors.
-
-For a `.ts` or `.tsx` source, `<JS>` changes the rendered extension to `.js`:
-
-```astro
-<JS src="script.tsx" />
-```
-
-```html
-<script type="module" src="/script.js?v=0123456789abcdef"></script>
-```
-
-Add `inline` to put the compiled contents directly into a `<style>` or
-`<script type="module">`:
-
-```astro
-<CSS src="/style.scss" inline />
-<JS src="/js/app.ts" inline />
-```
-
-## ES3 and Babel
-
-AstralHP supports compiling all the way down to ES3, for ancient browsers.
-This approach uses Babel and compiles `import` and `export` to no-ops,
-making everything a global.
-
-When doing this, use `<ES3 src="script.tsx" />` for each module you use,
-dependencies first. Unlike `<JS>`, there will be no bundling. We'll
-scan for `<ES3>` and compile each source file to a `.js` file.
-
-```text
-example/
-  script.tsx
-example/.caches/dist/
-  script.js
-  script.js.map
-```
-
-This Babel configuration is designed to target ancient browsers while
-still letting you write code that looks modern. If you don't care about
-targeting ancient browsers, you're probably better off using `<JS>`
-instead.
-
-If you do care about targeting ancient browsers, keep in mind:
-
-- We use Babel in loose mode, so make sure your code follows best practices
-- We assume that all `for...of` is on arrays
-- We assume that you only ever use `for...in` on bare objects, not arrays
-  or primitives
-- You can't use anything that doesn't compile down to ES3, such as
-  async/await
-- We don't polyfill Map/Set because we have no use for them, either
-
-## Cache directories
-
-The build writes generated Astro files to `example/.caches/dist/`. The live
-server serves those generated files alongside static files read directly from
-the webroot. Dynamic pages are handled by Astro's Node adapter middleware from
-`example/.caches/dist/.server/`. It never copies the webroot's static files.
-
-AstralHP uses a few hidden cache directories:
-
-```text
-[project]/
-  astralhp.mts
-  .caches/
-    .astro/
-      vite/
-  [webroot]/
-    .caches/
-      dist/
-        _astro/
-        .server/
-```
-
-- `.astro` contains Astro build metadata
-- `.astro/vite` contains Vite build metadata
-- `dist/_astro` contains Astro runtime dependencies (stuff like styles, scripts, images)
-- `dist/.server` contains server software for dynamic pages
-- `dist` contains built versions of static pages
-
-AstralHP interprets the project directory as the directory containing
-`astralhp.mts` or `package.json`. If neither exists, it uses the webroot.
-
-We recommend not using the same directory for webroot and the project, but you
-can do that by setting `webroot: '.'`. This combines the two `.caches/`
-directories. With multiple webroots, `.astro` will be in
-`.caches/[webroot]/.astro`.
-
-You probably want to add `.caches/` to your `.gitignore`.
 
 ## Developing AstralHP
 
