@@ -109,6 +109,12 @@ export function astralhpIntegration(
 			"astro:config:done"({ config }) {
 				trailingSlash = config.trailingSlash;
 			},
+			"astro:build:setup"({ pages }) {
+				// A static endpoint needs a filename. Apache and Node serve the built index at /.
+				for (const { route } of pages.values()) {
+					if (route.type === "endpoint" && route.prerender && route.pathname === "/") route.pathname = "/index";
+				}
+			},
 			"astro:routes:resolved"({ routes }) {
 				if (options.staticOnly) {
 					// Astro adds internal image, server-island, and fallback routes
@@ -360,7 +366,7 @@ export class Webroot {
 		if (parts === null || this.hasPrivateDirectory(parts)) return null;
 
 		const candidates = !parts.length ?
-			[["index.html"]] :
+			[["index"], ["index.html"]] :
 			path.extname(parts.at(-1)!) ?
 			[parts] :
 			[

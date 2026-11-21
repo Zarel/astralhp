@@ -21,6 +21,7 @@ test("static Apache rules require neither a proxy port nor a CGI handler", t => 
 	process.env.PORT = "invalid";
 	t.after(() => original === undefined ? delete process.env.PORT : process.env.PORT = original);
 	const block = apacheBlock(undefined, [], "apache-static");
+	assert.doesNotMatch(block, /RewriteRule "\^\$"/);
 	assert.match(block, /Serve built files/);
 	assert.match(block, /Remove .html from URLs/);
 	assert.doesNotMatch(block, /ProxyPass|ProxyPreserveHost|RequestHeader|ExecCGI|cgi-script|127\.0\.0\.1/);
@@ -87,6 +88,80 @@ test("apache-static also rejects injected dynamic endpoints", () => {
 			entrypoint: "/injected/api.ts",
 		}],
 	}), /apache-static does not support dynamic routes:[\s\S]*api\.ts/);
+});
+
+test("apache-static prerenders a JSON endpoint at / and replaces it on rebuild", async t => {
+	const site = fixture(t);
+	const source = path.join(site.path, "index.astro.ts");
+	fs.writeFileSync(
+		source, `
+export function GET({ request, url, routePattern }) {
+	return Response.json([new URL(request.url).pathname, url.pathname, routePattern]);
+}
+`,
+	);
+	await build(site);
+	const body = site.resolveDistFile("/");
+	assert.equal(path.relative(site.dist, body), "index");
+	assert.deepEqual(JSON.parse(fs.readFileSync(body)), ["/index", "/index", "/"]);
+	assert.ok(
+		fs.readFileSync(path.join(site.path, ".htaccess"), "utf8").includes('RewriteRule "^$" ".caches/dist/index"'),
+	);
+
+	fs.unlinkSync(source);
+	fs.writeFileSync(path.join(site.path, "index.astro"), "<h1>Home</h1>");
+	await build(site);
+	assert.match(fs.readFileSync(site.resolveDistFile("/"), "utf8"), /<h1>Home<\/h1>/);
+	assert.equal(fs.existsSync(body), false);
+	const rules = fs.readFileSync(path.join(site.path, ".htaccess"), "utf8");
+	assert.ok(rules.includes('RewriteRule "^$" ".caches/dist/index.html" [END]'));
+	assert.ok(!rules.includes('RewriteRule "^$" ".caches/dist/index" [END]'));
+});
+
+test("Apache aliases a built index.json endpoint when there is no homepage", async t => {
+	const site = fixture(t);
+	const source = path.join(site.path, "index.json.astro.ts");
+	const rules = () => fs.readFileSync(path.join(site.path, ".htaccess"), "utf8");
+	fs.writeFileSync(source, "export const GET = () => Response.json({ ready: true });");
+	await build(site);
+	assert.deepEqual(JSON.parse(fs.readFileSync(path.join(site.dist, "index.json"))), { ready: true });
+	assert.ok(rules().includes('RewriteRule "^$" ".caches/dist/index.json" [END]'));
+
+	const home = path.join(site.path, "index.astro");
+	fs.writeFileSync(home, "<h1>Home</h1>");
+	await build(site);
+	assert.deepEqual(rules().match(/^RewriteRule "\^\$".*$/gm), ['RewriteRule "^$" ".caches/dist/index.html" [END]']);
+
+	fs.unlinkSync(home);
+	fs.writeFileSync(source, "export const GET = () => new Response(null, { status: 204 });");
+	await build(site);
+	assert.equal(fs.existsSync(path.join(site.dist, "index.json")), false);
+	assert.doesNotMatch(rules(), /RewriteRule "\^\$"/);
+});
+
+test("Node serves the prerendered root endpoint as an extensionless static file", async t => {
+	const site = new Webroot({ webroot: fixture(t).path, adapter: "node" });
+	const source = path.join(site.path, "index.astro.js");
+	fs.writeFileSync(
+		source, `export const GET = () => new Response(new Uint8Array([0, 255, 128]), {
+	headers: { "content-type": "application/vnd.astralhp.test" }
+});`,
+	);
+	await build(site);
+	fs.unlinkSync(source);
+	const server = await start(site, { port: 0 });
+	try {
+		const response = await fetch(server.urls[0]);
+		assert.equal(response.status, 200);
+		assert.equal(response.headers.get("content-type"), "application/octet-stream");
+		assert.deepEqual(Buffer.from(await response.arrayBuffer()), Buffer.from([0, 255, 128]));
+		const head = await fetch(server.urls[0], { method: "HEAD" });
+		assert.equal(head.headers.get("content-type"), "application/octet-stream");
+		assert.equal(head.headers.get("content-length"), "3");
+		assert.equal(await head.text(), "");
+	} finally {
+		await server.close();
+	}
 });
 
 test("apache-static supports local dev and rejects dynamic pages at startup", async t => {
