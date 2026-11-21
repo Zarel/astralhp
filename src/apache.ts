@@ -122,10 +122,10 @@ RewriteEngine On
 RewriteCond expr "tolower(unescape(%{THE_REQUEST})) =~ m#\\s/+\\.caches(?:/|%2f|\\?|\\s)#"
 RewriteRule "^" "-" [R=404,END]
 
-# Don't serve node_modules, dotfiles (except .well-known and .caches), or source files
+# Don't serve node_modules, dotfiles (except .well-known and .caches), or page and endpoint sources
 RewriteRule "(?:^|/)node_modules(?:/|$)" "-" [R=404,END,NC]
 RewriteRule "(?:^|/)\\.(?!well-known(?:/|$)|caches(?:/|$))" "-" [R=404,END,NC]
-RewriteRule "\\.(?:astro(?:\\.js)?|mdx?|ts|tsx)$" "-" [R=404,END,NC]
+RewriteRule "\\.(?:astro(?:\\.[jt]s)?|mdx?)$" "-" [R=404,END,NC]
 
 # Serve built files in .caches/dist/
 ${rootRule}RewriteCond "%{DOCUMENT_ROOT}/.caches/dist/$1" -f

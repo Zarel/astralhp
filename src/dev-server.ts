@@ -28,15 +28,21 @@ export function staticFiles(webroot: Webroot, endpoints: readonly RegExp[] = [])
 					return;
 				}
 				if (request.method !== "GET" && request.method !== "HEAD") return next();
+				const pathname = new URL(request.url!, "http://astralhp.local").pathname;
+				const isTypeScript = /\.tsx?$/i.test(pathname);
+				if (isTypeScript) {
+					// Browsers accept HTML on navigation. Let Vite handle module imports.
+					response.appendHeader("Vary", "Accept");
+					if (!request.headers.accept?.includes("text/html")) return next();
+				}
 				// A .js or .css endpoint may have a stale prerendered file in dist.
 				// Let Astro run its current handler in development.
-				const pathname = new URL(request.url!, "http://astralhp.local").pathname;
 				const compiled = isCompiledAssetRequest(pathname) && !endpoints.some(route => route.test(pathname));
 				const filename = (compiled && webroot.resolveDistFile(request.url)) || webroot.resolveStaticFile(request.url);
 				if (!filename) return next();
 
 				response.statusCode = 200;
-				response.setHeader("Content-Type", contentType(filename));
+				response.setHeader("Content-Type", isTypeScript ? "text/plain; charset=utf-8" : contentType(filename));
 				response.setHeader("Cache-Control", "no-cache");
 
 				if (request.method === "HEAD") {

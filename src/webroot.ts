@@ -354,7 +354,7 @@ export class Webroot {
 		const filename = this.resolveFile(pathname?.endsWith("/") ? pathname + "index.html" : pathname);
 		if (
 			!filename || ENDPOINT_SUFFIX.test(filename) ||
-			[".astro", ".md", ".mdx", ".ts", ".tsx"].includes(path.extname(filename).toLowerCase())
+			[".astro", ".md", ".mdx"].includes(path.extname(filename).toLowerCase())
 		) {
 			return null;
 		}

@@ -193,6 +193,8 @@ test("serves prerendered and live endpoints alongside browser scripts", async t 
 	fs.mkdirSync(api, { recursive: true });
 	fs.writeFileSync(path.join(api, "status.astro.js"), 'export const GET = () => new Response("ready");');
 	fs.writeFileSync(path.join(site.path, "client.js"), "console.log('client');");
+	const typescript = "export const version: number = 1;";
+	for (const ext of ["ts", "tsx"]) fs.writeFileSync(path.join(site.path, `client.${ext}`), typescript);
 	const script = path.join(site.path, "version.js.astro.js");
 	fs.writeFileSync(script, 'export const GET = () => new Response("v1");');
 	fs.writeFileSync(
@@ -223,6 +225,11 @@ export async function POST({ params, request }) {
 			assert.equal(await (await fetch(base + "/api/status")).text(), "ready");
 			assert.deepEqual(await (await fetch(base + "/feed.json")).json(), { version: 1 });
 			assert.equal(await (await fetch(base + "/client.js")).text(), "console.log('client');");
+			for (const ext of ["ts", "tsx"]) {
+				const page = await fetch(base + `/client.${ext}`, { headers: { Accept: "text/html, */*;q=0.8" } });
+				assert.equal(await page.text(), typescript);
+				if (launch === dev) assert.match(page.headers.get("content-type"), /text\/plain/);
+			}
 			assert.equal(await (await fetch(base + "/version.js")).text(), launch === dev ? "v2" : "v1");
 			const post = await fetch(base + "/api/example", { method: "POST", body: "hello" });
 			assert.equal(post.status, 201);

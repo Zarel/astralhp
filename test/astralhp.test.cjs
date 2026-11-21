@@ -642,9 +642,8 @@ test("uses Apache's MIME type registry", () => {
 	assert.equal(contentType("unknown.astralhp"), "application/octet-stream");
 });
 
-test("does not expose source, private directories, or files outside the web root", () => {
+test("does not expose page sources, private directories, or files outside the web root", () => {
 	assert.equal(exampleWebroot.resolveStaticFile("/index.astro"), null);
-	assert.equal(exampleWebroot.resolveStaticFile("/script.tsx"), null);
 	assert.equal(exampleWebroot.resolveStaticFile("/%2e%2e/package.json"), null);
 	assert.equal(exampleWebroot.resolveStaticFile("/.hidden"), null);
 	assert.equal(exampleWebroot.resolveStaticFile("/.caches/file.txt"), null);
