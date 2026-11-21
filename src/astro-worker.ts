@@ -1,4 +1,4 @@
-import { satteri } from "@astrojs/markdown-satteri";
+import { satteri, type SatteriResolvedOptions } from "@astrojs/markdown-satteri";
 import mdx from "@astrojs/mdx";
 import nodeAdapter from "@astrojs/node";
 import type * as astro from "astro";
@@ -108,9 +108,19 @@ function pageEntrypoints(webroot: Webroot): AstralHPPage[] {
 	});
 }
 
-function markdownWithExternalLinks() {
-	return satteri({
-		hastPlugins: [{
+function markdownProcessor(addTargetBlank: boolean) {
+	const hastPlugins: SatteriResolvedOptions["hastPlugins"] = [{
+		name: "astralhp-heading-title",
+		element: {
+			filter: ["h1", "h2", "h3", "h4", "h5", "h6"],
+			visit(node, ctx) {
+				const { frontmatter } = ctx.data.astro!;
+				frontmatter.title ??= ctx.textContent(node);
+			},
+		},
+	}];
+	if (addTargetBlank) {
+		hastPlugins.push({
 			name: "astralhp-external-links",
 			element: {
 				filter: ["a"],
@@ -123,8 +133,9 @@ function markdownWithExternalLinks() {
 					ctx.setProperty(node, "target", "_blank");
 				},
 			},
-		}],
-	});
+		});
+	}
+	return satteri({ hastPlugins });
 }
 
 function astroConfig(
@@ -141,7 +152,7 @@ function astroConfig(
 		root: webroot.projectCaches,
 		cacheDir: webroot.astroCache,
 		publicDir: webroot.publicDir,
-		markdown: webroot.markdownAddTargetBlank ? { processor: markdownWithExternalLinks() } : {},
+		markdown: { processor: markdownProcessor(webroot.markdownAddTargetBlank) },
 		output: staticOnly ? "static" : "server",
 		...(staticOnly ? {} : {
 			adapter: webroot.adapter === "apache-cgi" ? cgiAdapter() : nodeAdapter({ mode: "middleware" }),

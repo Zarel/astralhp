@@ -268,6 +268,10 @@ test("renders Markdown and MDX routes with inherited, per-webroot, and explicit 
 	fs.writeFileSync(path.join(project, "www/draft.md"), "# Draft");
 	const page = "---\ntitle: Welcome\n---\n# Hello";
 	fs.writeFileSync(path.join(project, "www/index.md"), page);
+	fs.writeFileSync(
+		path.join(project, "www/inferred.md"),
+		"---\nlayout: ../Other.astro\n---\n```md\n# Code sample\n```\n\n## The **first** [heading](/)\n\n# Later",
+	);
 	fs.writeFileSync(path.join(project, "www/brief.md"), "**Short post**");
 	fs.writeFileSync(path.join(project, "docs/posts/index.md"), page);
 	fs.writeFileSync(path.join(project, "docs/posts/[slug].md"), "# Dynamic post");
@@ -298,11 +302,12 @@ Write a paragraph with **emphasis**.
 	assert(!fs.existsSync(path.join(www.dist, "draft.html")));
 	const html = (site, name) => fs.readFileSync(path.join(site.dist, name), "utf8");
 	assert.match(html(www, "index.html"), /<article data-title="Welcome">\s*<h1[^>]*>Hello<\/h1>/);
+	assert.match(html(www, "inferred.html"), /<aside data-title="The first heading">/);
 	assert.match(html(www, "brief.html"), /<article>[\s\S]*<strong>Short post<\/strong>/);
 	assert.match(html(www, "posts/news.html"), /<aside data-title="News">[\s\S]*<strong>Update<\/strong>/);
 	assert.doesNotMatch(html(www, "plain.html"), /<article/);
 	function checkMdx(content, layoutTag) {
-		assert.match(content, new RegExp(`<${layoutTag}\\b[^>]*>\\s*<section class="whatever"`));
+		assert.match(content, new RegExp(`<${layoutTag} data-title="Getting started">\\s*<section class="whatever"`));
 		assert.match(content, /<h2[^>]*>Getting started<\/h2>/);
 		assert.match(content, /<strong>emphasis<\/strong>/);
 		assert.match(content, /<blockquote[^>]*>Bring your <em>favorite<\/em> editor\.<\/blockquote>/);
@@ -324,7 +329,7 @@ Write a paragraph with **emphasis**.
 			checkMdx(await guide.text(), "main");
 			const post = await fetch(`http://localhost:${port}/posts/example`);
 			assert.equal(post.status, 200);
-			assert.match(await post.text(), /<main\b[^>]*>[\s\S]*>Dynamic post<\/h1>/);
+			assert.match(await post.text(), /<main data-title="Dynamic post">[\s\S]*>Dynamic post<\/h1>/);
 		} finally {
 			await server.close();
 		}
