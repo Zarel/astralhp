@@ -12,17 +12,11 @@ export interface AstralHPDevServer {
 	stop(): Promise<void>;
 }
 
-function isCompiledAssetRequest(url: string | undefined): boolean {
-	if (!url) return false;
-	try {
-		const pathname = new URL(url, "http://astralhp.local").pathname;
-		return /\.(?:m?js|css)(?:\.map)?$/i.test(pathname) || /\/(?:_assets|_chunks)\//.test(pathname);
-	} catch {
-		return false;
-	}
+function isCompiledAssetRequest(pathname: string): boolean {
+	return /\.(?:m?js|css)(?:\.map)?$/i.test(pathname) || /\/(?:_assets|_chunks)\//.test(pathname);
 }
 
-export function staticFiles(webroot: Webroot): vite.Plugin {
+export function staticFiles(webroot: Webroot, endpoints: readonly RegExp[] = []): vite.Plugin {
 	return {
 		name: "astralhp:static-files",
 		enforce: "pre",
@@ -34,10 +28,11 @@ export function staticFiles(webroot: Webroot): vite.Plugin {
 					return;
 				}
 				if (request.method !== "GET" && request.method !== "HEAD") return next();
-				// resolveStaticFile excludes TypeScript sources. Let Vite transform
-				// module imports of those files instead of serving them verbatim.
-				const filename = (isCompiledAssetRequest(request.url) && webroot.resolveDistFile(request.url)) ||
-					webroot.resolveStaticFile(request.url);
+				// A .js or .css endpoint may have a stale prerendered file in dist.
+				// Let Astro run its current handler in development.
+				const pathname = new URL(request.url!, "http://astralhp.local").pathname;
+				const compiled = isCompiledAssetRequest(pathname) && !endpoints.some(route => route.test(pathname));
+				const filename = (compiled && webroot.resolveDistFile(request.url)) || webroot.resolveStaticFile(request.url);
 				if (!filename) return next();
 
 				response.statusCode = 200;
@@ -58,6 +53,7 @@ export async function startDev(
 	webroot: Webroot,
 	config: astro.AstroInlineConfig,
 	options: DevServerOptions = {},
+	endpoints: readonly RegExp[] = [],
 ): Promise<AstralHPDevServer> {
 	process.env.ASTRO_TELEMETRY_DISABLED ||= "1";
 	const { dev } = await import("astro");
@@ -71,7 +67,7 @@ export async function startDev(
 			...config.vite,
 			plugins: [
 				...(config.vite?.plugins || []),
-				staticFiles(webroot),
+				staticFiles(webroot, endpoints),
 			],
 		},
 	});

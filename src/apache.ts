@@ -123,7 +123,7 @@ RewriteRule "^" "-" [R=404,END]
 # Don't serve node_modules, dotfiles (except .well-known and .caches), or source files
 RewriteRule "(?:^|/)node_modules(?:/|$)" "-" [R=404,END,NC]
 RewriteRule "(?:^|/)\\.(?!well-known(?:/|$)|caches(?:/|$))" "-" [R=404,END,NC]
-RewriteRule "\\.(?:astro|mdx?|ts|tsx)$" "-" [R=404,END,NC]
+RewriteRule "\\.(?:astro(?:\\.js)?|mdx?|ts|tsx)$" "-" [R=404,END,NC]
 
 # Serve built files in .caches/dist/
 RewriteCond "%{DOCUMENT_ROOT}/.caches/dist/$1" -f
@@ -151,7 +151,7 @@ export function resolveApacheRoutes(
 ): ApacheRoute[] {
 	const { routes, trailingSlash } = resolved;
 	return routes
-		.filter(route => route.type === "page" && !route.isPrerendered)
+		.filter(route => (route.type === "page" || route.type === "endpoint") && !route.isPrerendered)
 		.map(route => apacheRoute(route, trailingSlash));
 }
 

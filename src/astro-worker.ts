@@ -103,7 +103,7 @@ function outsideRootEntrypoints(
 function pageEntrypoints(webroot: Webroot): AstralHPPage[] {
 	const entrypoint = fileURLToPath(new URL("./components/MarkdownPage.astro", import.meta.url));
 	return webroot.scanPages().map(page => {
-		if (page.entrypoint.endsWith(".astro")) return page;
+		if (!/\.mdx?$/.test(page.entrypoint)) return page;
 		return { ...page, markdownFile: page.entrypoint, entrypoint };
 	});
 }
@@ -265,10 +265,19 @@ async function run(request: WorkerRequest): Promise<void> {
 				throw new Error("An AstralHP dev worker requires exactly one webroot");
 			}
 			const options = request.options as DevServerOptions | undefined;
-			const server = await startDev(webroots[0]!, astroConfig(webroots[0]!), {
+			const endpoints: RegExp[] = [];
+			const config = astroConfig(webroots[0]!, {
+				onRoutesResolved({ routes }) {
+					endpoints.length = 0;
+					for (const route of routes) {
+						if (route.type === "endpoint") endpoints.push(route.patternRegex);
+					}
+				},
+			});
+			const server = await startDev(webroots[0]!, config, {
 				...options,
 				port: options?.port ?? serverPort(webroots[0]!.port),
-			});
+			}, endpoints);
 			close = () => server.stop();
 			await send({ type: "ready" });
 			break;

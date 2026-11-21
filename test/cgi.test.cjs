@@ -92,6 +92,7 @@ for (const runtime of ["Node", "Bun"]) {
 		assert.equal(webroot.runtimePath, runtimePath);
 		fs.writeFileSync(path.join(root, "index.astro"), '<p>{Astro.url.searchParams.get("message")}</p>');
 		fs.writeFileSync(path.join(root, "about.astro"), "---\nexport const prerender = true;\n---\nStatic about");
+		fs.writeFileSync(path.join(root, "status.astro.js"), "export const GET = () => Response.json({ ready: true });");
 		fs.writeFileSync(
 			path.join(root, "live.astro"),
 			`---
@@ -142,6 +143,8 @@ const body = Astro.request.method === "POST" ? (await Astro.request.formData()).
 			assert.equal(String(home.body), `<!DOCTYPE html><p>${message}</p>`);
 		}
 		const get = request();
+		assert.deepEqual(JSON.parse(request({ REQUEST_URI: "/status" }).body), { ready: true });
+		assert.match(fs.readFileSync(path.join(root, ".htaccess"), "utf8"), /RewriteRule "\^status\/\?\$"/);
 		assert.equal(String(request({ QUERY_STRING: "proxy=1", HTTP_PROXY: "http://untrusted.test" }).body), "undefined");
 		assert.match(get.headers, /^Status: 200 OK/);
 		assert.match(get.headers, /x-cgi-test: yes/);

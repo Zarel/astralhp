@@ -42,6 +42,7 @@ import { CSS, JS, ES3 } from "astralhp/components";
 	fs.writeFileSync(path.join(site.path, "app.ts"), 'console.log("modern");');
 	fs.writeFileSync(path.join(site.path, "legacy.ts"), 'const legacy: string = "legacy";');
 	fs.writeFileSync(path.join(site.path, "style.scss"), "$color: red; body { color: $color; }");
+	fs.writeFileSync(path.join(site.path, "feed.xml.astro.ts"), 'export const GET = () => new Response("<feed/>");');
 	fs.writeFileSync(
 		path.join(site.path, "[id].astro"), `---
 export function getStaticPaths() { return [{ params: { id: "about" } }]; }
@@ -51,6 +52,7 @@ export function getStaticPaths() { return [{ params: { id: "about" } }]; }
 	await build(site);
 	const html = fs.readFileSync(path.join(site.dist, "index.html"), "utf8");
 	assert.match(html, /Static home/);
+	assert.equal(fs.readFileSync(path.join(site.dist, "feed.xml"), "utf8"), "<feed/>");
 	for (const file of ["style.css", "app.js", "legacy.js"]) {
 		assert(fs.statSync(path.join(site.dist, file)).isFile());
 		assert(html.includes(`/${file}?v=`));

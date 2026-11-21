@@ -20,6 +20,8 @@ import {
 export { validateConfig } from "./config-loader.js";
 
 const PRIVATE_DIRECTORIES = new Set([".caches", ".server", "node_modules"]);
+const ENDPOINT_SUFFIX = /\.astro\.[jt]s$/i;
+const ROUTE_SUFFIXES = [".astro", ".md", ".mdx", ".astro.js", ".astro.ts"];
 
 export interface AstralHPPage {
 	pattern: string;
@@ -282,7 +284,7 @@ export class Webroot {
 
 	isPrivateRequest(requestUrl: string | undefined): boolean {
 		const parts = this.requestPathParts(requestUrl);
-		return parts === null || this.hasPrivateDirectory(parts);
+		return parts === null || this.hasPrivateDirectory(parts) || ENDPOINT_SUFFIX.test(parts.at(-1) ?? "");
 	}
 
 	scanPages(): AstralHPPage[] {
@@ -299,10 +301,8 @@ export class Webroot {
 					if (!PRIVATE_DIRECTORIES.has(entry.name.toLowerCase())) scan(filename);
 					continue;
 				}
-				const extension = path.extname(entry.name);
-				if (
-					!entry.isFile() || ![".astro", ".md", ".mdx"].includes(extension) || filename === this.markdownLayout
-				) {
+				const extension = ROUTE_SUFFIXES.find(suffix => entry.name.endsWith(suffix));
+				if (!entry.isFile() || !extension || filename === this.markdownLayout) {
 					continue;
 				}
 
@@ -347,7 +347,7 @@ export class Webroot {
 		const pathname = requestUrl?.split(/[?#]/, 1)[0];
 		const filename = this.resolveFile(pathname?.endsWith("/") ? pathname + "index.html" : pathname);
 		if (
-			!filename ||
+			!filename || ENDPOINT_SUFFIX.test(filename) ||
 			[".astro", ".md", ".mdx", ".ts", ".tsx"].includes(path.extname(filename).toLowerCase())
 		) {
 			return null;
@@ -364,6 +364,7 @@ export class Webroot {
 			path.extname(parts.at(-1)!) ?
 			[parts] :
 			[
+				parts,
 				[...parts.slice(0, -1), `${parts.at(-1)}.html`],
 				[...parts, "index.html"],
 			];

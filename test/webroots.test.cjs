@@ -186,6 +186,59 @@ test("an existing HTML site can build and run before migrating its first page", 
 	assert.equal(fs.readFileSync(path.join(root, "index.html"), "utf8"), home);
 });
 
+test("serves prerendered and live endpoints alongside browser scripts", async t => {
+	const project = fixture(t, { webroot: "www", adapter: "apache-proxy" });
+	const site = await Webroot.requireOne(project);
+	const api = path.join(site.path, "api");
+	fs.mkdirSync(api, { recursive: true });
+	fs.writeFileSync(path.join(api, "status.astro.js"), 'export const GET = () => new Response("ready");');
+	fs.writeFileSync(path.join(site.path, "client.js"), "console.log('client');");
+	const script = path.join(site.path, "version.js.astro.js");
+	fs.writeFileSync(script, 'export const GET = () => new Response("v1");');
+	fs.writeFileSync(
+		path.join(site.path, "feed.json.astro.ts"), `
+const version: number = 1;
+export function GET() { return Response.json({ version }); }
+`,
+	);
+	fs.writeFileSync(
+		path.join(api, "[id].astro.ts"), `
+export const prerender = false;
+export async function POST({ params, request }) {
+	return Response.json([params.id, await request.text()], { status: 201 });
+}
+`,
+	);
+	await build(site);
+	fs.writeFileSync(script, 'export const GET = () => new Response("v2");');
+	assert.equal(fs.readFileSync(path.join(site.dist, "api/status"), "utf8"), "ready");
+	const rules = fs.readFileSync(path.join(site.path, ".htaccess"), "utf8");
+	assert.ok(rules.includes('RewriteRule "^api/[^/]+?/?$" "http://127.0.0.1:'));
+
+	const port = await freePort();
+	const base = `http://localhost:${port}`;
+	for (const launch of [dev, start]) {
+		const worker = await launch(site, { port });
+		try {
+			assert.equal(await (await fetch(base + "/api/status")).text(), "ready");
+			assert.deepEqual(await (await fetch(base + "/feed.json")).json(), { version: 1 });
+			assert.equal(await (await fetch(base + "/client.js")).text(), "console.log('client');");
+			assert.equal(await (await fetch(base + "/version.js")).text(), launch === dev ? "v2" : "v1");
+			const post = await fetch(base + "/api/example", { method: "POST", body: "hello" });
+			assert.equal(post.status, 201);
+			assert.deepEqual(await post.json(), ["example", "hello"]);
+			for (const pathname of ["/api/status.astro.js", "/feed.json.astro.ts?raw"]) {
+				assert.ok([403, 404].includes((await fetch(base + pathname)).status));
+			}
+		} finally {
+			await worker.close();
+		}
+	}
+
+	fs.writeFileSync(path.join(api, "status.astro"), "");
+	assert.throws(() => site.scanPages(), /both map to \/api\/status/);
+});
+
 for (const adapter of ["apache-static", "apache-proxy", "apache-cgi"]) {
 	test(`${adapter} builds an HTML-only webroot`, async t => {
 		const project = fixture(t, { adapter });
