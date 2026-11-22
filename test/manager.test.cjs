@@ -87,6 +87,30 @@ test("background commands wait for readiness and recover from a failed reload", 
 	await assert.rejects(run("reload"), /not running/);
 });
 
+test("an unhandled rejection in a proxy request is logged and the worker keeps serving", async t => {
+	const { project, run, url } = await fixture(t);
+	fs.writeFileSync(
+		path.join(project, "www/live.astro.js"), `
+export const prerender = false;
+export async function GET({ url }) {
+	if (url.searchParams.has("reject")) {
+		void Promise.reject(new Error("detached proxy task failed"));
+		await new Promise(resolve => setImmediate(resolve));
+	}
+	return new Response(String(process.pid));
+}`,
+	);
+	await run("build");
+	await run("start");
+	const pid = await (await fetch(url)).text();
+	assert.match(pid, /^\d+$/);
+	assert.equal(await (await fetch(url + "?reject")).text(), pid);
+	assert.equal(await (await fetch(url)).text(), pid);
+	const log = fs.readFileSync(path.join(project, ".caches/run/server.log"), "utf8");
+	assert.match(log, /Unhandled rejection while rendering .*\/live\?reject/);
+	assert.match(log, /Error: detached proxy task failed/);
+});
+
 test("background start prints the URL assigned to an ephemeral port", async t => {
 	const { options, run, publish } = await fixture(t);
 	options.env.PORT = "0";

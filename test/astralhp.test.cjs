@@ -846,6 +846,9 @@ test("generates Apache rules in built, static, proxy order", () => {
 		block,
 		/^RequestHeader set X-AstralHP-Document-Root "expr=%\{DOCUMENT_ROOT\}"$/m,
 	);
+	assert.match(block, /^RequestHeader unset X-Forwarded-For$/m);
+	assert.match(block, /^RequestHeader unset X-Forwarded-Host$/m);
+	assert.match(block, /^RequestHeader set X-Forwarded-Proto "expr=%\{REQUEST_SCHEME\}"$/m);
 	assert.doesNotMatch(block, /ProxyPreserveHost/);
 	assert(physical > 0);
 	assert(built > 0);

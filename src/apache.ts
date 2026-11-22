@@ -66,6 +66,11 @@ function proxyRules(port: number, routes: readonly ApacheRoute[]): string {
 	return `# Identify this Apache webroot to the shared AstralHP server
 RequestHeader set X-AstralHP-Document-Root "expr=%{DOCUMENT_ROOT}"
 
+# mod_proxy_http supplies the client address and original Host after mod_headers runs.
+RequestHeader unset X-Forwarded-For
+RequestHeader unset X-Forwarded-Host
+RequestHeader set X-Forwarded-Proto "expr=%{REQUEST_SCHEME}"
+
 # Proxy dynamic AstralHP routes
 ${rules.join("\n")}`;
 }

@@ -464,6 +464,54 @@ test("rejects duplicate webroots within an array and across configs", async t =>
 	await assert.rejects(Webroot.search(project), /configured by both/);
 });
 
+test("Apache proxy preserves the public URL for dynamic pages and form origin checks", async t => {
+	const project = fixture(t, { webroot: ".", adapter: "apache-proxy", prerender: false });
+	fs.writeFileSync(
+		path.join(project, "form.astro"), `---
+const value = Astro.request.method === "POST" ? (await Astro.request.formData()).get("value") : null;
+return Response.json({ url: Astro.url.href, request: Astro.request.url, address: Astro.clientAddress, value });
+---`,
+	);
+	const site = await Webroot.requireOne(project);
+	await build(site);
+	const port = await freePort();
+	const worker = await start(site, { port });
+	t.after(() => worker.close());
+	const pathname = "/form?message=a%2Fb";
+	const backend = `http://127.0.0.1:${port}${pathname}`;
+	const origin = "https://public.example:8443";
+	const forwarded = {
+		"X-Forwarded-Host": "public.example:8443",
+		"X-Forwarded-Port": "9000", // The public port comes from X-Forwarded-Host.
+		"X-Forwarded-Proto": "https",
+		"X-Forwarded-For": "192.0.2.10",
+	};
+	const headers = { ...forwarded, "X-AstralHP-Document-Root": site.config.webroot };
+	const post = origin => fetch(backend, {
+		method: "POST",
+		headers: { ...headers, Origin: origin },
+		body: new URLSearchParams({ value: "hello" }),
+	});
+	const good = await post(origin);
+	assert.equal(good.status, 200);
+	assert.deepEqual(await good.json(), {
+		url: origin + pathname,
+		request: origin + pathname,
+		address: "192.0.2.10",
+		value: "hello",
+	});
+	assert.equal((await post("https://elsewhere.example")).status, 403);
+	const alias = await fetch(backend, { headers: { ...headers, "X-Forwarded-Host": "alias.example" } });
+	assert.equal((await alias.json()).url, "https://alias.example" + pathname);
+	for (const [header, address] of [["192.0.2.10, 2001:db8::2", "2001:db8::2"], ["unknown", "127.0.0.1"]]) {
+		const response = await fetch(backend, { headers: { ...headers, "X-Forwarded-For": header } });
+		assert.equal((await response.json()).address, address);
+	}
+	const direct = await (await fetch(backend, { headers: forwarded })).json();
+	assert.equal(direct.url, `http://localhost:${port}${pathname}`);
+	assert.equal(direct.address, "127.0.0.1");
+});
+
 test("CLI lists and builds array entries, then serves both through a shared proxy listener", async t => {
 	const project = fixture(t, { adapter: "apache-proxy", webroot: ["first", { webroot: "second" }] });
 	for (const name of ["first", "second"]) {

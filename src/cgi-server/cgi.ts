@@ -6,7 +6,7 @@
 import { runCGI } from "./cgi-runtime.js";
 
 try {
-	await runCGI(() => import("./app.js"));
+	await runCGI(() => import(new URL("./app.mjs", import.meta.url).href));
 } catch (error) {
 	console.error(error);
 	process.exit(1);

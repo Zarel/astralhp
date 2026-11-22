@@ -6,13 +6,14 @@ import nodeAdapter from "@astrojs/node";
 import type { AstroIntegration } from "astro";
 import { fileURLToPath } from "node:url";
 
-/** Keep Node's build-time image/session setup, but render directly with the selected JavaScript interpreter. */
-export function cgiAdapter(): AstroIntegration {
+/** Keep Node's build-time image/session setup and render Apache requests with their public URL. */
+export function apacheAdapter(mode: "apache-cgi" | "apache-proxy"): AstroIntegration {
 	const integration = nodeAdapter({ mode: "middleware" });
+	const name = `astralhp/${mode}`;
 	const configure = integration.hooks["astro:config:done"]!;
 	return {
 		...integration,
-		name: "astralhp/apache-cgi",
+		name,
 		hooks: {
 			...integration.hooks,
 			"astro:config:done": context =>
@@ -22,8 +23,8 @@ export function cgiAdapter(): AstroIntegration {
 						const { previewEntrypoint: _previewEntrypoint, ...options } = adapter;
 						context.setAdapter({
 							...options,
-							name: "astralhp/apache-cgi",
-							serverEntrypoint: fileURLToPath(new URL("./cgi-server/app.js", import.meta.url)),
+							name,
+							serverEntrypoint: fileURLToPath(new URL("./apache-app.js", import.meta.url)),
 						});
 					},
 				}),

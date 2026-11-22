@@ -3,6 +3,7 @@ import http from "node:http";
 import type { AddressInfo } from "node:net";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
+import { ApacheProxy } from "./apache-proxy.js";
 import { contentType } from "./mime.js";
 import { canonicalPath, resolveServerPort } from "./utils.js";
 import type { Webroot } from "./webroot.js";
@@ -12,8 +13,8 @@ const DOCUMENT_ROOT_HEADER = "x-astralhp-document-root";
 type RequestHandler = (
 	request: http.IncomingMessage,
 	response: http.ServerResponse,
-	next?: (error?: unknown) => void,
-	locals?: object,
+	next: (error?: unknown) => void,
+	fromApache: boolean,
 ) => void | Promise<void>;
 
 export interface LiveServerOptions {
@@ -152,10 +153,13 @@ export class AstralHPServer {
 		if (!handler) throw new Error(`No Astro handler loaded for ${webroot.config.webroot}`);
 		let nextCalled = false;
 		let nextError: unknown;
+		// The generated Apache rules connect to 127.0.0.1 and identify the selected webroot.
+		const peer = request.socket.remoteAddress;
+		const fromApache = documentRoot !== undefined && (peer === "127.0.0.1" || peer === "::ffff:127.0.0.1");
 		await handler(request, response, error => {
 			nextCalled = true;
 			nextError = error;
-		});
+		}, fromApache);
 		if (nextError) throw nextError;
 		if (nextCalled && !response.writableEnded) {
 			response.statusCode = 404;
@@ -178,12 +182,20 @@ export class AstralHPServer {
 				);
 			}
 			const module = await import(pathToFileURL(entrypoint).href) as {
-				handler?: RequestHandler;
+				app?: ApacheProxy["app"];
+				handler?: (
+					req: http.IncomingMessage, res: http.ServerResponse, next: (error?: unknown) => void,
+				) => Promise<void>;
 			};
-			if (typeof module.handler !== "function") {
+			if (module.app && webroot.config.adapter === "apache-proxy") {
+				const proxy = new ApacheProxy(module.app, webroot);
+				this.handlers.set(webroot, proxy.handle.bind(proxy));
+			} else if (typeof module.handler === "function") {
+				const handler = module.handler;
+				this.handlers.set(webroot, (req, res, next) => handler(req, res, next));
+			} else {
 				throw new Error(`Astro server entrypoint for ${webroot.config.webroot} has no handler`);
 			}
-			this.handlers.set(webroot, module.handler);
 		}
 
 		await new Promise<void>((resolve, reject) => {

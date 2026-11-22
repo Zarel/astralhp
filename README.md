@@ -187,7 +187,6 @@ The host needs to support:
 
 ## To-do
 
-- Fix `Astro.url` - important for Astro's CSRF protection
 - User Astro config
 - Improve the process manager
 - Dev/prod separate output dirs

@@ -1,3 +1,4 @@
+import { ApacheProxy } from "./apache-proxy.js";
 import { astroConfig } from "./astro-config.js";
 import type { AstralHPResolvedRoutes } from "./astro-integration.js";
 import type { WorkerRequest } from "./astro-process.js";
@@ -95,6 +96,9 @@ async function run(request: WorkerRequest): Promise<void> {
 			break;
 		}
 		case "start": {
+			if (webroots.some(site => site.config.adapter === "apache-proxy")) {
+				process.on("unhandledRejection", ApacheProxy.logUnhandledRejection);
+			}
 			const servers = await startLive(
 				webroots,
 				request.options as LiveServerOptions | undefined,

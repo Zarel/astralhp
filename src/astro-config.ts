@@ -5,9 +5,9 @@ import type * as astro from "astro";
 import { fileURLToPath } from "node:url";
 import type * as vite from "vite";
 
+import { apacheAdapter } from "./apache-adapter.js";
 import { type AstralHPConfigOptions, astralhpIntegration } from "./astro-integration.js";
 import { AssetBundles } from "./bundles.js";
-import { cgiAdapter } from "./cgi-adapter.js";
 import { ES3Scripts } from "./es3.js";
 import { includeSuffixes } from "./request-policy.js";
 import { sourcePathsPlugin } from "./source-paths.js";
@@ -111,7 +111,7 @@ export function astroConfig(
 		markdown: { processor: markdownProcessor(config.markdownAddTargetBlank) },
 		output: staticOnly ? "static" : "server",
 		...(staticOnly ? {} : {
-			adapter: config.adapter === "apache-cgi" ? cgiAdapter() : nodeAdapter({ mode: "middleware" }),
+			adapter: config.adapter === "node" ? nodeAdapter({ mode: "middleware" }) : apacheAdapter(config.adapter),
 		}),
 		build: {
 			client: "./",
