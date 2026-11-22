@@ -115,7 +115,11 @@ export function apacheBlock(
 
 RewriteEngine On
 
-# Don't serve private paths or page and endpoint sources
+<FilesMatch "(?i)\\.md$">
+    ForceType text/markdown
+</FilesMatch>
+
+# Don't serve private paths or component and endpoint sources
 ${requestPolicy.blockedPatterns(serveSourceFiles).map(denyFile).join("")}
 # Serve built files in .caches/dist/
 ${rootRule}RewriteCond "%{DOCUMENT_ROOT}/.caches/dist/$1" -f

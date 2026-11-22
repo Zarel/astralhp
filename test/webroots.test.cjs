@@ -324,12 +324,16 @@ Write a paragraph with **emphasis**.
 	checkMdx(html(www, "posts/guide.html"), "article");
 	assert.match(html(www, "override.html"), /<aside data-title="Override">/);
 	assert.equal(docs.lookup("/posts").kind, "miss");
-	assert.equal(docs.lookup("/posts/index.md").kind, "miss");
+	assert.equal(www.lookup("/draft.md").kind, "file");
 	assert.equal(docs.lookup("/posts/guide.mdx").kind, "miss");
 	const port = await freePort();
 	for (const launch of [dev, start]) {
 		const server = await launch(docs, { port });
 		try {
+			const raw = await fetch(`http://localhost:${port}/posts/index.md`);
+			assert.equal(raw.status, 200);
+			assert.match(raw.headers.get("content-type"), /^text\/markdown\b/);
+			assert.equal(await raw.text(), page);
 			const response = await fetch(`http://localhost:${port}/posts`);
 			assert.equal(response.status, 200);
 			assert.match(await response.text(), /<main data-title="Welcome"/);

@@ -124,6 +124,7 @@ test("JS bundles use stable paths, include dependencies and CSS, and render on s
 
 test("serveSourceFiles can hide sources and maps while serving bundles, chunks, and minified files", async t => {
 	const site = fixture(t, { serveSourceFiles: false });
+	fs.writeFileSync(path.join(site.config.webroot, "rules.md"), "# Rules");
 	for (const file of ["vendor.min.js", "theme.scss", "view.tsx", "vendor.min.js.map"]) {
 		fs.writeFileSync(path.join(site.config.webroot, file), "fixture");
 	}
@@ -134,7 +135,10 @@ test("serveSourceFiles can hide sources and maps while serving bundles, chunks, 
 	const chunk = fs.readdirSync(path.join(site.dist, "scripts/_chunks")).find(file => file.endsWith(".js"));
 	assert(chunk);
 	const rules = fs.readFileSync(path.join(site.config.webroot, ".htaccess"), "utf8");
-	const mapRule = rules.split("\n").findIndex(line => line.startsWith("RewriteRule") && line.includes("scss|map"));
+	const mapRule = rules.split("\n").findIndex(line => {
+		const pattern = line.match(/^RewriteRule "([^"]+)" "-" \[R=404,END,NC\]$/)?.[1];
+		return pattern && new RegExp(pattern, "i").test("app.js.map");
+	});
 	const distRule = rules.split("\n").findIndex(line => line.includes('".caches/dist/$1" [END]'));
 	const jsRule = rules.split("\n").findIndex(line => line.startsWith("RewriteRule") && line.includes("(?<!"));
 	assert(mapRule >= 0 && mapRule < distRule && distRule < jsRule);
@@ -152,9 +156,10 @@ test("serveSourceFiles can hide sources and maps while serving bundles, chunks, 
 			assert.match(await (await get("scripts/_chunks/" + chunk)).text(), /lazy-one/);
 			assert.equal(await (await get("vendor.min.js")).text(), "fixture");
 			assert.equal(await (await get("version.js")).text(), "v1");
+			assert.match(await (await get("rules")).text(), /<h1[^>]*>Rules<\/h1>/);
 			for (const file of [
 				"scripts/app.ts", "view.tsx", "scripts/plain.js?v=1", "theme.scss",
-				"vendor.min.js.map", "scripts/app.min.js.map", "scripts/_chunks/" + chunk + ".map",
+				"rules.md", "vendor.min.js.map", "scripts/app.min.js.map", "scripts/_chunks/" + chunk + ".map",
 			]) {
 				assert([403, 404].includes((await get(file)).status), file);
 			}

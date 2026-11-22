@@ -11,7 +11,7 @@ export interface WebrootConfig {
 	/** Files or directories to skip during page discovery, relative to the webroot. */
 	excludePages?: readonly string[];
 	/**
-	 * Serve `.ts`, `.scss`, `.js.map` etc files over HTTP. Defaults to true.
+	 * Serve `.md`, `.ts`, `.scss`, `.js.map` etc files over HTTP. Defaults to true.
 	 * Note that `.astro` and `.mdx` sources will never be served.
 	 */
 	serveSourceFiles?: boolean;
