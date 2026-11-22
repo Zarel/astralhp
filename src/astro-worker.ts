@@ -1,3 +1,4 @@
+import fs from "node:fs";
 import { ApacheProxy } from "./apache-proxy.js";
 import { astroConfig } from "./astro-config.js";
 import type { AstralHPResolvedRoutes } from "./astro-integration.js";
@@ -8,7 +9,7 @@ import { type DevServerOptions, startDev } from "./dev-server.js";
 import { ES3Scripts } from "./es3.js";
 import { type LiveServerOptions, startLive } from "./live-server.js";
 import { resolveServerPort } from "./utils.js";
-import { Webroot } from "./webroot.js";
+import { DevWebroot, Webroot } from "./webroot.js";
 
 function send(message: object): Promise<void> {
 	return new Promise((resolve, reject) => {
@@ -51,14 +52,14 @@ async function shutdown(): Promise<void> {
 }
 
 async function run(request: WorkerRequest): Promise<void> {
-	const webroots = request.webroots.map(Webroot.fromLoadedConfig);
+	const { webroots } = request;
 	switch (request.operation) {
 		case "build": {
 			if (webroots.length !== 1) {
 				throw new Error("An AstralHP build worker requires exactly one webroot");
 			}
 			let resolvedRoutes: AstralHPResolvedRoutes | undefined;
-			const webroot = webroots[0]!;
+			const webroot = Webroot.fromLoadedConfig(webroots[0]!);
 			const es3 = new ES3Scripts(webroot);
 			const bundles = new AssetBundles(webroot, es3);
 			const config = astroConfig(
@@ -77,9 +78,12 @@ async function run(request: WorkerRequest): Promise<void> {
 			if (webroots.length !== 1) {
 				throw new Error("An AstralHP dev worker requires exactly one webroot");
 			}
+			const { config: siteConfig, configFile, isolatedCache } = webroots[0]!;
+			const webroot = new DevWebroot(siteConfig, configFile, isolatedCache);
+			fs.rmSync(webroot.dist, { recursive: true, force: true });
 			const options = request.options as DevServerOptions | undefined;
 			const endpoints: RegExp[] = [];
-			const config = astroConfig(webroots[0]!, {
+			const config = astroConfig(webroot, {
 				onRoutesResolved({ routes }) {
 					endpoints.length = 0;
 					for (const route of routes) {
@@ -87,9 +91,9 @@ async function run(request: WorkerRequest): Promise<void> {
 					}
 				},
 			});
-			const server = await startDev(webroots[0]!, config, {
+			const server = await startDev(webroot, config, {
 				...options,
-				port: options?.port ?? resolveServerPort(webroots[0]!.config.port),
+				port: options?.port ?? resolveServerPort(webroot.config.port),
 			}, endpoints);
 			close = () => server.stop();
 			await send({ type: "ready" });
@@ -100,7 +104,7 @@ async function run(request: WorkerRequest): Promise<void> {
 				process.on("unhandledRejection", ApacheProxy.logUnhandledRejection);
 			}
 			const servers = await startLive(
-				webroots,
+				webroots.map(Webroot.fromLoadedConfig),
 				request.options as LiveServerOptions | undefined,
 			);
 			close = async () => {

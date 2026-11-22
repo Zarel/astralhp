@@ -5,12 +5,12 @@ const fs = require("node:fs");
 const path = require("node:path");
 const test = require("node:test");
 const { staticFiles } = require("../dist/dev-server.js");
-const { Webroot } = require("../dist/webroot.js");
+const { DevWebroot } = require("../dist/webroot.js");
 
 test("serves transformed TypeScript modules alongside classic compiled scripts", async t => {
 	const { createServer } = await import("vite");
 	const root = fs.mkdtempSync(path.resolve(__dirname, "../.astralhp-test-modules-"));
-	const site = new Webroot({ webroot: root });
+	const site = new DevWebroot({ webroot: root });
 	fs.writeFileSync(path.join(root, "answer.ts"), "export const answer: number = 42;");
 	fs.writeFileSync(
 		path.join(root, "app.ts"),
@@ -42,5 +42,5 @@ test("serves transformed TypeScript modules alongside classic compiled scripts",
 	const classic = await fetch(`${base}/app.js`);
 	assert.equal(classic.status, 200);
 	assert.equal(await classic.text(), "console.log(answer);");
-	assert.equal((await fetch(`${base}/.caches/dist/app.js`)).status, 404);
+	assert.equal((await fetch(`${base}/.caches/dev-dist/app.js`)).status, 404);
 });

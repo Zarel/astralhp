@@ -1,7 +1,7 @@
 ---
 import type { HTMLAttributes } from "astro/types";
 import { cachebustES3Script } from "../cachebuster.js";
-import { Webroot } from "../webroot.js";
+import { DevWebroot, Webroot } from "../webroot.js";
 
 type Props = Omit<HTMLAttributes<"script">, "src"> & {
 	src: string;
@@ -10,8 +10,9 @@ type Props = Omit<HTMLAttributes<"script">, "src"> & {
 };
 
 const { src, __astralhpSrc, ...attributes } = Astro.props;
+const Site = import.meta.env.MODE === "development" ? DevWebroot : Webroot;
 const resolvedSrc = __astralhpSrc ?? cachebustES3Script(
-	new Webroot({ webroot: import.meta.env.ASTRALHP_WEBROOT }),
+	new Site({ webroot: import.meta.env.ASTRALHP_WEBROOT }),
 	src,
 	Astro.url,
 );

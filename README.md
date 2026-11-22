@@ -189,7 +189,6 @@ The host needs to support:
 
 - User Astro config
 - Improve the process manager
-- Dev/prod separate output dirs
 
 ## Developing AstralHP
 

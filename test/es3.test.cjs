@@ -8,6 +8,7 @@ const net = require("node:net");
 const test = require("node:test");
 const { build, dev, Webroot } = require("astralhp");
 const { assetReferences } = require("../dist/asset-references.js");
+const { DevWebroot } = require("../dist/webroot.js");
 const { AstralHPServer } = require("../dist/live-server.js");
 
 function scriptURL(site, name) {
@@ -16,12 +17,12 @@ function scriptURL(site, name) {
 	return `/scripts/${name}.js?v=${hash}`;
 }
 
-function fixture(t) {
+function fixture(t, Site = Webroot) {
 	const root = fs.mkdtempSync(path.resolve(__dirname, "../.astralhp-test-es3-"));
 	t.after(() => fs.rmSync(root, { recursive: true, force: true }));
 	fs.mkdirSync(path.join(root, "scripts"));
 	fs.writeFileSync(path.join(root, "scripts/legacy.ts"), "const value: number = 1;");
-	return new Webroot({ webroot: root, adapter: "node" });
+	return new Site({ webroot: root, adapter: "node" });
 }
 
 test("collects imported ES3 tags, including aliases, namespaces, and conditional references", t => {
@@ -151,10 +152,19 @@ async function until(check) {
 }
 
 test("development compiles and watches ES3 references without compiling unrelated TypeScript", async t => {
-	const site = fixture(t);
+	const site = fixture(t, DevWebroot);
 	fs.writeFileSync(path.join(site.config.webroot, "unused.ts"), "THIS IS NOT VALID TYPESCRIPT");
+	fs.writeFileSync(path.join(site.config.webroot, "scripts/plain.js"), "var plain = 1;");
+	const production = path.join(site.caches, "dist/scripts");
+	fs.mkdirSync(production, { recursive: true });
+	fs.writeFileSync(path.join(production, "plain.js"), "var plain = 0;");
 	const page = path.join(site.config.webroot, "index.astro");
-	fs.writeFileSync(page, `---\nimport { ES3 } from "astralhp/components";\n---\n<ES3 src="scripts/legacy.ts" />`);
+	fs.writeFileSync(
+		page, `---
+import { ES3 } from "astralhp/components";
+---
+<ES3 src="scripts/legacy.ts" /><ES3 src="scripts/plain.js" />`,
+	);
 	const reservation = net.createServer();
 	await new Promise(resolve => reservation.listen(0, "127.0.0.1", resolve));
 	const port = reservation.address().port;
@@ -164,7 +174,10 @@ test("development compiles and watches ES3 references without compiling unrelate
 		const base = `http://localhost:${port}`;
 		const response = await fetch(base);
 		assert.equal(response.status, 200);
-		assert((await response.text()).includes(`src="${scriptURL(site, "legacy")}"`));
+		const html = await response.text();
+		assert(html.includes(`src="${scriptURL(site, "legacy")}"`));
+		const plainHash = createHash("sha256").update("var plain = 1;").digest("hex").slice(0, 16);
+		assert(html.includes(`src="/scripts/plain.js?v=${plainHash}"`));
 		const originalURL = scriptURL(site, "legacy");
 		const output = path.join(site.dist, "scripts/legacy.js");
 		assert.match(fs.readFileSync(output, "utf8"), /var value=1/);

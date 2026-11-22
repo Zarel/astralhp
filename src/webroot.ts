@@ -209,3 +209,7 @@ export class Webroot {
 		return { kind: "file", filename, from: "webroot" };
 	}
 }
+
+export class DevWebroot extends Webroot {
+	override readonly dist: string = path.join(this.caches, "dev-dist");
+}

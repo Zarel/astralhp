@@ -267,6 +267,12 @@ test("JS development serves sources and minified bundles and rebuilds imported d
 	fs.appendFileSync(
 		path.join(site.config.webroot, ".components/Assets.astro"), '\n<Script src="../scripts/app.ts" inline />',
 	);
+	await build(site);
+	const productionFile = path.join(site.dist, "scripts/app.min.js");
+	const productionBundle = fs.readFileSync(productionFile);
+	const devDist = path.join(site.caches, "dev-dist");
+	fs.mkdirSync(devDist);
+	fs.writeFileSync(path.join(devDist, "stale.js"), "from an earlier dev session");
 	const reservation = net.createServer();
 	await new Promise(resolve => reservation.listen(0, "127.0.0.1", resolve));
 	const port = reservation.address().port;
@@ -293,7 +299,9 @@ test("JS development serves sources and minified bundles and rebuilds imported d
 		assert.notEqual(after, before);
 		assert.match(await (await fetch(`${base}/live`)).text(), /dev-updated/);
 		assert.match(await (await fetch(`${base}${after}`)).text(), /dev-updated/);
-		assert(!fs.existsSync(path.join(site.dist, "scripts/unused.min.js")));
+		assert.deepEqual(fs.readFileSync(productionFile), productionBundle);
+		assert(!fs.existsSync(path.join(devDist, "scripts/unused.min.js")));
+		assert(!fs.existsSync(path.join(devDist, "stale.js")));
 	} finally {
 		await worker.close();
 	}

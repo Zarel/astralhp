@@ -160,10 +160,12 @@ AstralHP uses a few hidden cache directories:
       dist/
         _astro/
         .server/
+      dev-dist/
 ```
 
 - `.astro` contains Astro build metadata
 - `.astro/vite` contains Vite build metadata
+- `dev-dist` is a copy of dist used by the `astralhp dev` command
 - `dist/_astro` contains Astro runtime dependencies (stuff like styles, scripts, images)
 - `dist/.server` contains server software for dynamic pages
 - `dist` contains built versions of static pages
