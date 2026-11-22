@@ -1,8 +1,8 @@
 import { parse } from "@astrojs/compiler-rs";
-import MagicString from "magic-string";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { isBabelSource } from "./babel.js";
+import { isES3Source } from "./es3-compiler.js";
+import { isPathInside, publicURL } from "./utils.js";
 import type { Webroot } from "./webroot.js";
 
 // The Astro parser exposes its ESTree-compatible AST as Record<string, any>.
@@ -18,8 +18,6 @@ export interface AssetReference {
 }
 
 export interface AssetReferences {
-	code: string;
-	map: ReturnType<MagicString["generateMap"]>;
 	sources: string[];
 	assets: AssetReference[];
 }
@@ -47,7 +45,6 @@ export function assetReferences(
 			) names.add(specifier.local.name);
 		}
 	}
-	const output = new MagicString(code);
 	const sources = new Set<string>();
 	const assets: AssetReference[] = [];
 	const bytes = Buffer.from(code);
@@ -80,21 +77,20 @@ export function assetReferences(
 				let pathname = source;
 				if (!source.startsWith("/")) {
 					const resolved = fileURLToPath(new URL(source, pathToFileURL(filename)));
-					const relative = path.relative(webroot.path, resolved);
-					if (relative === ".." || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) {
+					if (!isPathInside(webroot.config.webroot, resolved)) {
 						fail(`source must be inside the webroot: ${source}`);
 					}
-					pathname = "/" + relative.split(path.sep).map(encodeURIComponent).join("/");
+					pathname = publicURL(path.relative(webroot.config.webroot, resolved));
 				}
 				const url = new URL(pathname, "http://astralhp.local/");
-				const target = webroot.resolveFile(url.pathname);
+				const target = webroot.resolveFile(url);
 				if (!target) fail(`source does not exist inside the webroot: ${source}`);
 				if (kind === "CSS") {
 					if (!/\.(?:css|scss)$/.test(target!)) fail("src must reference a .css or .scss file");
 					sources.add(target!);
 				} else if (kind === "JS" && /\.(?:[cm]?js|jsx|tsx?)$/.test(target!) && !target!.endsWith(".d.ts")) {
 					sources.add(target!);
-				} else if (isBabelSource(target!)) sources.add(target!);
+				} else if (isES3Source(target!)) sources.add(target!);
 				else if (!/\.m?js$/.test(target!)) fail("src must reference a .ts, .tsx, .js, or .mjs file");
 				assets.push({
 					source: target!,
@@ -104,7 +100,6 @@ export function assetReferences(
 					pathname: url.pathname,
 					mayInline: attributes.some(attr => attr.type === "JSXSpreadAttribute" || attr.name?.name === "inline"),
 				});
-				output.overwrite(offset(src!.value.start), offset(src!.value.end), `{${JSON.stringify(url.pathname)}}`);
 			}
 		}
 		for (const value of Object.values(node)) {
@@ -114,10 +109,5 @@ export function assetReferences(
 		}
 	}
 	for (const node of ast.body) visit(node);
-	return {
-		code: output.toString(),
-		map: output.generateMap({ hires: true, source: filename, includeContent: true }),
-		sources: [...sources],
-		assets,
-	};
+	return { sources: [...sources], assets };
 }

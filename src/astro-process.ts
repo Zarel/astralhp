@@ -1,27 +1,14 @@
 import { type ChildProcess, fork } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
+import type { LoadedWebrootConfig } from "./config-loader.js";
 import type { DevServerOptions } from "./dev-server.js";
 import type { LiveServerOptions } from "./live-server.js";
 import { Webroot } from "./webroot.js";
 
-interface SerializedWebroot {
-	path: string;
-	configFile: string | null;
-	isolatedCache: boolean;
-	adapter: Webroot["adapter"];
-	prerender: boolean;
-	port: number;
-	runtimePath?: string | undefined;
-	markdownLayout?: string | undefined;
-	excludePages: readonly string[];
-	serveSourceFiles: boolean;
-	markdownAddTargetBlank: boolean;
-}
-
-interface WorkerRequest {
+export interface WorkerRequest {
 	operation: "build" | "dev" | "start";
-	webroots: SerializedWebroot[];
+	webroots: LoadedWebrootConfig[];
 	options?: DevServerOptions | LiveServerOptions;
 }
 
@@ -38,22 +25,6 @@ type WorkerMessage =
 const WORKER_ENTRYPOINT = fileURLToPath(
 	new URL("./astro-worker.js", import.meta.url),
 );
-
-function serializeWebroot(webroot: Webroot): SerializedWebroot {
-	return {
-		path: webroot.path,
-		configFile: webroot.configFile,
-		isolatedCache: webroot.isolatedCache,
-		adapter: webroot.adapter,
-		prerender: webroot.prerender,
-		markdownLayout: webroot.markdownLayout,
-		excludePages: webroot.excludePages,
-		serveSourceFiles: webroot.serveSourceFiles,
-		markdownAddTargetBlank: webroot.markdownAddTargetBlank,
-		port: webroot.port,
-		runtimePath: webroot.runtimePath,
-	};
-}
 
 function workerError(error: SerializedError): Error {
 	const result = new Error(error.message);
@@ -166,7 +137,7 @@ function run(
 	if (!roots.length) throw new Error("No AstralHP webroots found");
 	return new WorkerProcess({
 		operation,
-		webroots: roots.map(serializeWebroot),
+		webroots: roots.map(({ config, configFile, isolatedCache }) => ({ config, configFile, isolatedCache })),
 		...(options === undefined ? {} : { options }),
 	}, cwd ?? (operation === "start" ? Webroot.workerDirectory(roots) : undefined));
 }

@@ -189,7 +189,6 @@ The host needs to support:
 
 - Includes. Block `.inc.ts` and `.inc.astro` files, and document that includes
   should ideally be outside the webroot
-- Consolidate code for static serving blacklists
 - Fix `Astro.url` - important for Astro's CSRF protection
 - User Astro config
 - Improve the process manager

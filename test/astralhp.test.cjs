@@ -12,10 +12,8 @@ const { pathToFileURL } = require("node:url");
 const { build: buildAstralHP } = require("astralhp");
 const { DatabaseTable, MySQLDatabase, PGDatabase, SQL, SQLStatement, SQLiteDatabase } = require("astralhp/database");
 
-const {
-	compileScripts,
-	scriptOutputPath,
-} = require("../dist/babel.js");
+const { ES3Scripts } = require("../dist/es3.js");
+const { es3OutputPath } = require("../dist/es3-compiler.js");
 const {
 	apacheRoute,
 	apacheBlock,
@@ -24,16 +22,17 @@ const {
 	writeApacheConfig,
 } = require("../dist/apache.js");
 const { publishDist } = require("../dist/build.js");
-const { cachebust, cachebustScript } = require("../dist/cachebuster.js");
+const { cachebust, cachebustES3Script } = require("../dist/cachebuster.js");
 const { contentType } = require("../dist/mime.js");
-const {
-	AstralHPServer,
-	serverPort,
-} = require("../dist/live-server.js");
-const { astralhpIntegration, Webroot } = require("../dist/webroot.js");
+const { AstralHPServer } = require("../dist/live-server.js");
+const { privatePath } = require("../dist/request-policy.js");
+const { resolveServerPort } = require("../dist/utils.js");
+const { astralhpIntegration } = require("../dist/astro-integration.js");
+const { Webroot } = require("../dist/webroot.js");
 
 const example = path.resolve(__dirname, "../example");
 const exampleWebroot = new Webroot({ webroot: example });
+const proxyConfig = { ...exampleWebroot.config, adapter: "apache-proxy", port: 9001 };
 const dynamicApacheRoute = {
 	pattern: "/[id]",
 	regex: "^[^/]+?/?$",
@@ -344,17 +343,17 @@ test("uses the nearest config from a subdirectory and discovers projects when th
 		'throw new Error("ignored configuration executed");',
 	);
 
-	assert.equal((await Webroot.requireOne(workspace)).path, path.join(project, "parent-public"));
-	assert.equal((await Webroot.requireOne(alpha)).path, path.join(alpha, "public"));
+	assert.equal((await Webroot.requireOne(workspace)).config.webroot, path.join(project, "parent-public"));
+	assert.equal((await Webroot.requireOne(alpha)).config.webroot, path.join(alpha, "public"));
 
 	fs.unlinkSync(path.join(project, ".astralhp.mts"));
 	const paths = [path.join(alpha, "public"), beta];
 	assert.deepEqual(
-		(await Webroot.search(workspace)).map(webroot => webroot.path),
+		(await Webroot.search(workspace)).map(webroot => webroot.config.webroot),
 		paths,
 	);
 	assert.deepEqual(
-		(await Webroot.requireAll(workspace)).map(webroot => webroot.path),
+		(await Webroot.requireAll(workspace)).map(webroot => webroot.config.webroot),
 		paths,
 	);
 	await assert.rejects(
@@ -397,6 +396,10 @@ test("requires at least one discovered webroot", async t => {
 });
 
 test("uses the configured port unless PORT overrides it", t => {
+	const webroot = fs.mkdtempSync(path.join(os.tmpdir(), "astralhp-port-"));
+	t.after(() => fs.rmSync(webroot, { recursive: true, force: true }));
+	const site = new Webroot({ ...proxyConfig, webroot });
+	const writeRules = () => fs.readFileSync(writeApacheConfig(site, [dynamicApacheRoute]), "utf8");
 	const originalPort = process.env.PORT;
 	t.after(() => {
 		if (originalPort === undefined) {
@@ -407,9 +410,13 @@ test("uses the configured port unless PORT overrides it", t => {
 	});
 
 	delete process.env.PORT;
-	assert.equal(serverPort(9001), 9001);
+	assert.equal(resolveServerPort(9001), 9001);
+	assert.match(writeRules(), /127\.0\.0\.1:9001%\{REQUEST_URI\}/);
 	process.env.PORT = "8000";
-	assert.equal(serverPort(9001), 8000);
+	assert.equal(resolveServerPort(9001), 8000);
+	assert.match(writeRules(), /127\.0\.0\.1:8000%\{REQUEST_URI\}/);
+	process.env.PORT = "0";
+	assert.throws(writeRules, /port must not be 0/i);
 });
 
 test("requires separate ports for direct node webroots", () => {
@@ -433,10 +440,10 @@ test("dispatches Apache proxy requests by document root", () => {
 	});
 	const server = new AstralHPServer([alpha, beta], { port: 0 });
 
-	assert.equal(server.webrootForRequest(alpha.path), alpha);
-	assert.equal(server.webrootForRequest(beta.path), beta);
+	assert.equal(server.webrootForRequest(alpha.config.webroot), alpha);
+	assert.equal(server.webrootForRequest(beta.config.webroot), beta);
 	assert.equal(
-		server.webrootForRequest(path.join(beta.path, "missing")),
+		server.webrootForRequest(path.join(beta.config.webroot, "missing")),
 		null,
 	);
 	assert.equal(server.webrootForRequest(undefined), null);
@@ -501,11 +508,13 @@ test("maps TypeScript script URLs to hashes of compiled JavaScript", async t => 
 
 	const filename = path.join(webroot, "script.tsx");
 	fs.writeFileSync(filename, "script");
-	await compileScripts(site, [filename]);
+	const scripts = new ES3Scripts(site);
+	scripts.sources.add(filename);
+	await scripts.writeTo(site.dist);
 	const compiled = fs.readFileSync(path.join(site.dist, "script.js"));
 	fs.rmSync(filename);
 	assert.equal(
-		cachebustScript(
+		cachebustES3Script(
 			site,
 			"script.tsx",
 			new URL("https://example.test/page"),
@@ -571,12 +580,13 @@ test("compiles explicitly selected TypeScript targets", async t => {
 	);
 
 	assert.equal(
-		scriptOutputPath(webroot, distRoot, source),
+		es3OutputPath(webroot, distRoot, source),
 		path.join(distRoot, "scripts", "script.js"),
 	);
 
-	const outputs = await compileScripts(new Webroot({ webroot }), [source], distRoot);
-	assert.deepEqual(outputs, [path.join(distRoot, "scripts", "script.js")]);
+	const scripts = new ES3Scripts(new Webroot({ webroot }));
+	scripts.sources.add(source);
+	await scripts.writeTo(distRoot);
 
 	const compiled = fs.readFileSync(
 		path.join(distRoot, "scripts", "script.js"),
@@ -629,10 +639,11 @@ test("scans nested and dynamic Astro pages", t => {
 });
 
 test("serves an existing static file from its original location", () => {
-	assert.equal(
-		exampleWebroot.resolveStaticFile("/square.png"),
-		path.join(example, "square.png"),
-	);
+	assert.deepEqual(exampleWebroot.lookup("/square.png"), {
+		kind: "file",
+		filename: path.join(example, "square.png"),
+		from: "webroot",
+	});
 });
 
 test("uses Apache's MIME type registry", () => {
@@ -643,11 +654,11 @@ test("uses Apache's MIME type registry", () => {
 });
 
 test("does not expose page sources, private directories, or files outside the web root", () => {
-	assert.equal(exampleWebroot.resolveStaticFile("/index.astro"), null);
-	assert.equal(exampleWebroot.resolveStaticFile("/%2e%2e/package.json"), null);
-	assert.equal(exampleWebroot.resolveStaticFile("/.hidden"), null);
-	assert.equal(exampleWebroot.resolveStaticFile("/.caches/file.txt"), null);
-	assert.equal(exampleWebroot.resolveStaticFile("/assets/node_modules/file.js"), null);
+	assert.equal(exampleWebroot.lookup("/index.astro").kind, "miss");
+	assert.equal(exampleWebroot.lookup("/%2e%2e/package.json").kind, "miss");
+	assert.equal(exampleWebroot.lookup("/.hidden").kind, "private");
+	assert.equal(exampleWebroot.lookup("/.caches/file.txt").kind, "private");
+	assert.equal(exampleWebroot.lookup("/assets/node_modules/file.js").kind, "private");
 });
 
 test("does not follow a public-looking symlink into a private directory", t => {
@@ -659,15 +670,47 @@ test("does not follow a public-looking symlink into a private directory", t => {
 	fs.writeFileSync(path.join(privateDir, "secret.txt"), "secret");
 	fs.symlinkSync(path.join(privateDir, "secret.txt"), path.join(webroot, "public.txt"));
 
-	assert.equal(new Webroot({ webroot }).resolveStaticFile("/public.txt"), null);
+	assert.equal(new Webroot({ webroot }).lookup("/public.txt").kind, "miss");
 });
 
 test("identifies private directories at any URL depth", () => {
-	assert.equal(exampleWebroot.isPrivateRequest("/.caches/file.txt"), true);
-	assert.equal(exampleWebroot.isPrivateRequest("/.server/app.mjs"), true);
-	assert.equal(exampleWebroot.isPrivateRequest("/assets/node_modules/file.js"), true);
-	assert.equal(exampleWebroot.isPrivateRequest("/assets/Node_Modules/file.js"), true);
-	assert.equal(exampleWebroot.isPrivateRequest("/assets/file.js"), false);
+	assert.equal(exampleWebroot.lookup("/.caches/file.txt").kind, "private");
+	assert.equal(exampleWebroot.lookup("/.server/app.mjs").kind, "private");
+	assert.equal(exampleWebroot.lookup("/assets/node_modules/file.js").kind, "private");
+	assert.equal(exampleWebroot.lookup("/assets/Node_Modules/file.js").kind, "private");
+	assert.equal(exampleWebroot.lookup("/assets/file.js").kind, "miss");
+});
+
+test("serves .well-known files while keeping other dotfiles private", t => {
+	const root = fs.mkdtempSync(path.join(os.tmpdir(), "astralhp-test-"));
+	t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+	const site = new Webroot({ webroot: root });
+	fs.mkdirSync(path.join(root, ".well-known"));
+	const filename = path.join(root, ".well-known", "settings.json");
+	fs.writeFileSync(filename, "{}");
+	assert.deepEqual(site.lookup("/.well-known/settings.json"), {
+		kind: "file",
+		filename: fs.realpathSync(filename),
+		from: "webroot",
+	});
+	assert.equal(site.lookup("/.well-known/.hidden").kind, "private");
+	assert.equal(site.lookup("/.well-known-other/settings.json").kind, "private");
+});
+
+test("looks up a generated script before its hidden source", t => {
+	const root = fs.mkdtempSync(path.join(os.tmpdir(), "astralhp-test-"));
+	t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+	const site = new Webroot({ webroot: root, serveSourceFiles: false });
+	fs.mkdirSync(site.dist, { recursive: true });
+	const filename = path.join(site.dist, "my script.js");
+	fs.writeFileSync(filename, "generated");
+	fs.writeFileSync(path.join(root, "my script.js"), "source");
+	const url = "/my%20script.js?v=1";
+	assert.deepEqual(site.lookup(url), { kind: "file", filename: fs.realpathSync(filename), from: "dist" });
+	assert.equal(site.lookup(url, { dist: false }).kind, "private");
+	fs.unlinkSync(filename);
+	assert.equal(site.lookup(url).kind, "private");
+	assert.equal(site.lookup("/%FF").kind, "private");
 });
 
 test("keeps tooling caches beside the config and build output inside the webroot", () => {
@@ -742,15 +785,15 @@ test("resolves preserve-format dist output", t => {
 	fs.writeFileSync(path.join(distRoot, ".server", "app.mjs"), "server");
 
 	assert.equal(
-		webroot.resolveDistFile("/"),
+		webroot.lookup("/").filename,
 		fs.realpathSync(path.join(distRoot, "index.html")),
 	);
 	assert.equal(
-		webroot.resolveDistFile("/download"),
+		webroot.lookup("/download").filename,
 		fs.realpathSync(path.join(distRoot, "download.html")),
 	);
-	assert.equal(webroot.resolveDistFile("/.server/app.mjs"), null);
-	assert.equal(webroot.resolveDistFile("/.caches/file.html"), null);
+	assert.equal(webroot.lookup("/.server/app.mjs").kind, "private");
+	assert.equal(webroot.lookup("/.caches/file.html").kind, "private");
 });
 
 test("translates Astro route segments to Apache patterns", () => {
@@ -787,17 +830,17 @@ test("translates Astro route segments to Apache patterns", () => {
 });
 
 test("generates Apache rules in built, static, proxy order", () => {
-	const block = apacheBlock(9001, [dynamicApacheRoute]);
+	const block = apacheBlock(proxyConfig, [dynamicApacheRoute]);
 	const physical = block.indexOf('RewriteCond "%{REQUEST_FILENAME}" -f');
 	const built = block.indexOf(
 		'RewriteCond "%{DOCUMENT_ROOT}/.caches/dist/$1" -f',
 	);
 	const proxy = block.indexOf(
-		'RewriteRule "^[^/]+?/?$" "http://127.0.0.1:9001%{REQUEST_URI}"',
+		'RewriteRule "^[^/]+?/?$" "http://127.0.0.1:',
 	);
 
-	assert.match(block, /THE_REQUEST/);
-	assert.match(block, /tolower\(unescape\(%\{THE_REQUEST\}\)\)/);
+	const denyPrivate = block.indexOf(`RewriteRule "${privatePath.source}" "-" [R=404,END,NC]`);
+	assert(denyPrivate >= 0 && denyPrivate < built);
 	assert.match(block, /\.caches\/dist\/\$1\.html/);
 	assert.match(
 		block,
@@ -812,9 +855,9 @@ test("generates Apache rules in built, static, proxy order", () => {
 });
 
 test("omits proxy rules when every Astro route is prerendered", () => {
-	assert.doesNotMatch(apacheBlock(9001), /http:\/\/127\.0\.0\.1/);
-	assert.doesNotMatch(apacheBlock(9001), /X-AstralHP-Document-Root/);
-	assert.doesNotMatch(apacheBlock(9001), /ProxyPreserveHost/);
+	assert.doesNotMatch(apacheBlock(proxyConfig), /http:\/\/127\.0\.0\.1/);
+	assert.doesNotMatch(apacheBlock(proxyConfig), /X-AstralHP-Document-Root/);
+	assert.doesNotMatch(apacheBlock(proxyConfig), /ProxyPreserveHost/);
 });
 
 test("resolves prerendered routes without generating proxy patterns", () => {
@@ -937,7 +980,7 @@ test("builds the configured Apache proxy adapter", async t => {
 
 test("replaces only AstralHP's managed Apache section", t => {
 	const webroot = fs.mkdtempSync(path.join(os.tmpdir(), "astralhp-test-"));
-	const site = new Webroot({ webroot, adapter: "apache-proxy" });
+	const site = new Webroot({ ...proxyConfig, webroot });
 	t.after(() => fs.rmSync(webroot, { recursive: true, force: true }));
 	const filename = path.join(webroot, ".htaccess");
 	fs.writeFileSync(
@@ -953,33 +996,33 @@ test("replaces only AstralHP's managed Apache section", t => {
 	);
 
 	assert.equal(
-		writeApacheConfig(site, 9001, [dynamicApacheRoute]),
+		writeApacheConfig(site, [dynamicApacheRoute]),
 		filename,
 	);
 	const generated = fs.readFileSync(filename, "utf8");
 	assert.match(generated, /^# user rule before$/m);
 	assert.match(generated, /^# user rule after$/m);
 	assert.doesNotMatch(generated, /old generated rule/);
-	assert.match(generated, /127\.0\.0\.1:9001/);
+	assert.match(generated, /127\.0\.0\.1:\d+%\{REQUEST_URI\}/);
 
-	writeApacheConfig(site, 9001, [dynamicApacheRoute]);
+	writeApacheConfig(site, [dynamicApacheRoute]);
 	assert.equal(fs.readFileSync(filename, "utf8"), generated);
 });
 
 test("appends an AstralHP section when none can be located", () => {
 	const updated = replaceApacheBlock(
 		"# user rule\n",
-		apacheBlock(9001, [dynamicApacheRoute]),
+		apacheBlock(proxyConfig, [dynamicApacheRoute]),
 	);
 
 	assert.match(updated, /^# user rule\n\n# ===== BEGIN ASTRALHP =====/);
-	assert.match(updated, /127\.0\.0\.1:9001/);
+	assert.match(updated, /127\.0\.0\.1:\d+%\{REQUEST_URI\}/);
 	assert.match(updated, /# ===== END ASTRALHP =====\n$/);
 });
 
 test("rejects malformed managed Apache sections", () => {
 	assert.throws(
-		() => replaceApacheBlock("# ===== BEGIN ASTRALHP =====\n", apacheBlock()),
+		() => replaceApacheBlock("# ===== BEGIN ASTRALHP =====\n", apacheBlock(exampleWebroot.config)),
 		/exactly one/,
 	);
 	assert.throws(
@@ -991,7 +1034,7 @@ test("rejects malformed managed Apache sections", () => {
 					"# ===== END ASTRALHP =====",
 					"",
 				].join("\n"),
-				apacheBlock(),
+				apacheBlock(exampleWebroot.config),
 			),
 		/exactly one/,
 	);

@@ -71,8 +71,8 @@ test("init defaults to an empty www/.htaccess without a config file", async t =>
 	assert.deepEqual(fs.readdirSync(project), ["www"]);
 	assert.equal(fs.readFileSync(path.join(project, "www/.htaccess"), "utf8"), "");
 	const site = await Webroot.requireOne(project);
-	assert.equal(site.path, path.join(project, "www"));
-	assert.equal(site.adapter, "apache-static");
+	assert.equal(site.config.webroot, path.join(project, "www"));
+	assert.equal(site.config.adapter, "apache-static");
 	assert.equal(site.configFile, null);
 	assert(fs.statSync(path.join(project, "www")).isDirectory());
 });

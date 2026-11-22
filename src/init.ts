@@ -4,6 +4,7 @@ import path from "node:path";
 import { createInterface } from "node:readline";
 import { assertCanCreateConfig, createConfig, formatConfig, validateConfig } from "./config-loader.js";
 import type { Adapter, WebrootConfig } from "./config.d.ts";
+import { ancestorDirectories } from "./utils.js";
 
 class Cancelled extends Error {}
 
@@ -17,15 +18,12 @@ function stat(filename: string): fs.Stats | undefined {
 }
 
 function packageDirectory(directory: string): string {
-	let current = directory;
-	while (true) {
+	for (const current of ancestorDirectories(directory)) {
 		if (stat(path.join(current, "package.json")) || stat(path.join(current, "node_modules"))?.isDirectory()) {
 			return current;
 		}
-		const parent = path.dirname(current);
-		if (parent === current) return directory;
-		current = parent;
 	}
+	return directory;
 }
 
 function booleanAnswer(answer: string): boolean {

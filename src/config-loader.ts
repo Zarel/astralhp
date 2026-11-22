@@ -2,11 +2,28 @@ import fs from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import type { Adapter, Config, WebrootConfig } from "./config.d.ts";
+import { ancestorDirectories, canonicalPath, isPathInside } from "./utils.js";
 
 const CONFIG_FILENAMES = ["astralhp.mts", ".astralhp.mts"] as const;
 const PROJECT_MARKERS = [...CONFIG_FILENAMES, "package.json"];
 const IGNORED_DIRECTORIES = new Set(["node_modules", ".git", ".caches"]);
 const ADAPTERS = new Set<Adapter>(["node", "apache-proxy", "apache-cgi", "apache-static"]);
+
+export function withWebrootDefaults(config: WebrootConfig): Required<WebrootConfig> {
+	return {
+		webroot: config.webroot ?? ".",
+		adapter: config.adapter ?? "apache-static",
+		port: config.port ?? 4321,
+		prerender: config.prerender ?? true,
+		serveSourceFiles: config.serveSourceFiles ?? true,
+		markdownAddTargetBlank: config.markdownAddTargetBlank ?? false,
+		markdownLayout: config.markdownLayout,
+		runtimePath: config.runtimePath,
+		excludePages: config.excludePages ?? [],
+	};
+}
+
+const CONFIG_KEYS = new Set(Object.keys(withWebrootDefaults({})));
 
 /** Check without importing executable configuration or following symlinks. */
 export function assertCanCreateConfig(directory: string): void {
@@ -43,12 +60,7 @@ export function validateConfig(value: any, filename: string): Config {
 	}
 
 	for (const key of Object.keys(value)) {
-		if (
-			![
-				"webroot", "adapter", "port", "runtimePath", "prerender", "markdownLayout", "excludePages",
-				"markdownAddTargetBlank", "serveSourceFiles",
-			].includes(key)
-		) {
+		if (!CONFIG_KEYS.has(key)) {
 			throw new Error(`Unknown AstralHP configuration option: ${key}`);
 		}
 	}
@@ -148,15 +160,12 @@ function configIn(directory: string): string | null {
 /** Marker-free sites use their webroot as a standalone project. */
 export function findProjectDir(directory: string, configFile?: string | null): string {
 	if (configFile) return path.dirname(configFile);
-	let current = directory;
-	while (true) {
+	for (const current of ancestorDirectories(directory)) {
 		for (const name of PROJECT_MARKERS) {
 			if (fs.statSync(path.join(current, name), { throwIfNoEntry: false })?.isFile()) return current;
 		}
-		const parent = path.dirname(current);
-		if (parent === current) return directory;
-		current = parent;
 	}
+	return directory;
 }
 
 function findChildConfigs(directory: string, configs: string[], apacheRoots: string[]): void {
@@ -223,11 +232,10 @@ async function loadConfiguredWebroots(configs: string[]): Promise<LoadedWebrootC
 export async function searchConfigs(directory: string = process.cwd()): Promise<LoadedWebrootConfig[]> {
 	directory = path.resolve(directory);
 	const ancestors: string[] = [];
-	for (let current = directory;; current = path.dirname(current)) {
+	for (const current of ancestorDirectories(directory)) {
 		const config = configIn(current);
 		if (config) return loadConfiguredWebroots([config]);
 		if (current !== directory) ancestors.push(current);
-		if (current === path.dirname(current)) break;
 	}
 
 	const configs: string[] = [];
@@ -239,16 +247,12 @@ export async function searchConfigs(directory: string = process.cwd()): Promise<
 	}
 
 	const webroots: LoadedWebrootConfig[] = [];
-	const inside = (root: string, candidate: string): boolean => {
-		const relative = path.relative(root, candidate);
-		return relative !== ".." && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative);
-	};
 	// Consider outer roots first: nested .htaccess files usually configure a
 	// subdirectory of a site, rather than a separate site.
 	for (
 		const root of apacheRoots.sort((a, b) => a.split(path.sep).length - b.split(path.sep).length || a.localeCompare(b))
 	) {
-		if (webroots.some(webroot => inside(webroot.config.webroot, root))) continue;
+		if (webroots.some(webroot => isPathInside(webroot.config.webroot, root))) continue;
 		webroots.push({ config: { webroot: root }, configFile: null, isolatedCache: false });
 	}
 	return webroots;
@@ -287,14 +291,6 @@ export interface ManagedProject {
 	projectDir: string;
 	configs: LoadedWebrootConfig[];
 	lookupDirectories: string[];
-}
-
-export function canonicalPath(filename: string): string {
-	try {
-		return fs.realpathSync.native(path.resolve(filename));
-	} catch {
-		return path.resolve(filename);
-	}
 }
 
 export async function managedProject(webroot?: string): Promise<ManagedProject> {

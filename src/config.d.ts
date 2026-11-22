@@ -10,7 +10,10 @@ export interface WebrootConfig {
 	webroot?: string;
 	/** Files or directories to skip during page discovery, relative to the webroot. */
 	excludePages?: readonly string[];
-	/** Serve original scripts, SCSS, and source maps over HTTP. Defaults to true. */
+	/**
+	 * Serve `.ts`, `.scss`, `.js.map` etc files over HTTP. Defaults to true.
+	 * Note that `.astro` and `.mdx` sources will never be served.
+	 */
 	serveSourceFiles?: boolean;
 	/** Add `target="blank" rel="noopener"` to external Markdown links. Defaults to false. */
 	markdownAddTargetBlank?: boolean;

@@ -7,9 +7,10 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { compileAsync } from "sass";
 import type * as vite from "vite";
 import { assetReferences } from "./asset-references.js";
-import { scriptOutputPath } from "./babel.js";
-import { contentHash } from "./cachebuster.js";
+import { es3OutputPath } from "./es3-compiler.js";
+import type { ES3Scripts } from "./es3.js";
 import { inlineCSS, inlineJS } from "./inline-assets.js";
+import { contentHash, publicURL } from "./utils.js";
 import type { Webroot } from "./webroot.js";
 
 // Resolve the toolchain from Astro, including when it has a nested Vite install.
@@ -24,16 +25,14 @@ interface Bundle {
 	content: string;
 }
 
-function publicURL(filename: string): string {
-	return "/" + filename.split(path.sep).map(encodeURIComponent).join("/");
-}
-
 export class AssetBundles {
 	private readonly webroot: Webroot;
+	private readonly es3: ES3Scripts;
 	private readonly bundles = new Map<string, Promise<Bundle>>();
 	private readonly owners = new Map<string, string>();
 
-	constructor(webroot: Webroot) {
+	constructor(webroot: Webroot, es3: ES3Scripts) {
+		this.es3 = es3;
 		this.webroot = webroot;
 	}
 
@@ -51,7 +50,7 @@ export class AssetBundles {
 
 	private async compile(source: string): Promise<Bundle> {
 		const scss = source.endsWith(".scss");
-		const entry = path.relative(this.webroot.path, source)
+		const entry = path.relative(this.webroot.config.webroot, source)
 			.replace(/\.scss$/, ".css")
 			.replace(/\.(?:[cm]?js|jsx|tsx?)$/, ".min.js");
 		const owner = this.owners.get(entry);
@@ -75,7 +74,7 @@ export class AssetBundles {
 		const { build } = await import(viteURL) as typeof vite;
 		const result = await build({
 			configFile: false,
-			root: this.webroot.path,
+			root: this.webroot.config.webroot,
 			publicDir: false,
 			base: "./",
 			logLevel: "error",
@@ -153,14 +152,16 @@ export class AssetBundles {
 		};
 	}
 
-	async writeTo(dist: string, legacySources: Iterable<string> = []): Promise<void> {
-		const legacyOutputs = new Set(
-			[...legacySources].map(source => path.relative(dist, scriptOutputPath(this.webroot.path, dist, source))),
+	async writeTo(dist: string): Promise<void> {
+		const es3Outputs = new Set(
+			[...this.es3.sources].map(source =>
+				path.relative(dist, es3OutputPath(this.webroot.config.webroot, dist, source))
+			),
 		);
 		const files = new Map<string, string | Uint8Array>();
 		for (const pending of this.bundles.values()) {
 			for (const [filename, contents] of (await pending).files) {
-				if (legacyOutputs.has(filename)) throw new Error(`JS and ES3 both produce ${filename}`);
+				if (es3Outputs.has(filename)) throw new Error(`JS and ES3 both produce ${filename}`);
 				const previous = files.get(filename);
 				if (previous !== undefined && !Buffer.from(previous).equals(Buffer.from(contents))) {
 					throw new Error(`JS output collision: ${filename}`);
@@ -175,7 +176,7 @@ export class AssetBundles {
 		}
 	}
 
-	plugin(legacySources: Set<string>): vite.Plugin {
+	plugin(): vite.Plugin {
 		let server: vite.ViteDevServer | undefined;
 		let queue = Promise.resolve();
 		return {
@@ -203,7 +204,7 @@ export class AssetBundles {
 							changed = true;
 						}
 						if (!changed) return;
-						await this.writeTo(this.webroot.dist, legacySources);
+						await this.writeTo(this.webroot.dist);
 						for (const environment of Object.values(server!.environments)) environment.moduleGraph.invalidateAll();
 						server!.ws.send({ type: "full-reload", path: "*" });
 					}).catch(error => {
@@ -252,7 +253,7 @@ export class AssetBundles {
 							}
 							server?.watcher.add([...bundle.dependencies]);
 						} else {
-							const entry = path.relative(this.webroot.path, reference.source);
+							const entry = path.relative(this.webroot.config.webroot, reference.source);
 							const owner = this.owners.get(entry);
 							if (owner && owner !== reference.source) {
 								throw new Error(`Asset output collision: ${owner} and ${reference.source} both use ${entry}`);
@@ -260,7 +261,7 @@ export class AssetBundles {
 							this.owners.set(entry, reference.source);
 						}
 					}
-					if (server) await this.writeTo(this.webroot.dist, legacySources);
+					if (server) await this.writeTo(this.webroot.dist);
 					return {
 						code: output.toString(),
 						map: output.generateMap({ hires: true, source: id, includeContent: true }).toString(),

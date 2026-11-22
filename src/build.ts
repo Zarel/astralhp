@@ -2,10 +2,10 @@ import type * as astro from "astro";
 import fs from "node:fs";
 import path from "node:path";
 import { generateApacheConfig } from "./apache.js";
-import { compileScripts, type ScriptCache } from "./babel.js";
+import type { AstralHPResolvedRoutes } from "./astro-integration.js";
 import type { AssetBundles } from "./bundles.js";
-import { serverPort } from "./live-server.js";
-import type { AstralHPResolvedRoutes, Webroot } from "./webroot.js";
+import type { ES3Scripts } from "./es3.js";
+import type { Webroot } from "./webroot.js";
 
 type DistPaths = Pick<
 	Webroot,
@@ -57,9 +57,8 @@ export async function buildSite(
 	webroot: Webroot,
 	config: astro.AstroInlineConfig,
 	resolvedRoutes: () => AstralHPResolvedRoutes | undefined,
-	legacySources: Iterable<string> = [],
-	bundles?: AssetBundles,
-	legacyCache?: ScriptCache,
+	es3: ES3Scripts,
+	bundles: AssetBundles,
 ): Promise<string> {
 	process.env.ASTRO_TELEMETRY_DISABLED ||= "1";
 	const { build } = await import("astro");
@@ -83,10 +82,10 @@ export async function buildSite(
 	} finally {
 		if (cleanupFallback) removeEmptyDirectory(fallbackAstro);
 	}
-	await bundles?.writeTo(webroot.nextDist, legacySources);
-	await compileScripts(webroot, legacySources, webroot.nextDist, legacyCache);
+	await bundles.writeTo(webroot.nextDist);
+	await es3.writeTo(webroot.nextDist);
 
-	if (webroot.adapter === "apache-cgi") {
+	if (webroot.config.adapter === "apache-cgi") {
 		const server = path.join(webroot.nextDist, ".server");
 		for (const name of ["cgi-runtime", "cgi"]) {
 			let code = fs.readFileSync(new URL(`./cgi-server/${name}.js`, import.meta.url), "utf8");
@@ -94,21 +93,15 @@ export async function buildSite(
 			// sibling imports must use the deployed extension, too.
 			code = code.replace(/(["']\.\/[^"']+)\.js(["'])/g, "$1.mjs$2")
 				.replace(/^\/\/# sourceMappingURL=.*$/m, "");
-			if (name === "cgi") code = `#!${webroot.runtimePath ?? "/usr/bin/env bun"}\n${code}`;
+			if (name === "cgi") code = `#!${webroot.config.runtimePath ?? "/usr/bin/env bun"}\n${code}`;
 			fs.writeFileSync(path.join(server, `${name}.mjs`), code, { mode: name === "cgi" ? 0o755 : 0o644 });
 		}
 	}
 	publishDist(webroot);
-	if (webroot.adapter !== "node") {
+	if (webroot.config.adapter !== "node") {
 		const resolved = resolvedRoutes();
 		if (!resolved) throw new Error("Astro did not resolve the AstralHP routes");
-		console.log(
-			generateApacheConfig(
-				webroot,
-				resolved,
-				webroot.adapter === "apache-proxy" ? serverPort(webroot.port) : webroot.port,
-			),
-		);
+		console.log(generateApacheConfig(webroot, resolved));
 	}
 	return webroot.dist;
 }

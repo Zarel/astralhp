@@ -1,11 +1,12 @@
 import * as babel from "@babel/core";
 import fs from "node:fs";
 import path from "node:path";
+import { isPathInside, relativePosixPath } from "./utils.js";
 import type { Webroot } from "./webroot.js";
 
 const ASTRALHP_ROOT = path.resolve(import.meta.dirname, "..");
 
-const SHOWDOWN_BABEL_OPTIONS: babel.TransformOptions = {
+const ES3_BABEL_OPTIONS: babel.TransformOptions = {
 	babelrc: false,
 	configFile: false,
 	plugins: [
@@ -48,23 +49,20 @@ const SHOWDOWN_BABEL_OPTIONS: babel.TransformOptions = {
 	sourceMaps: true,
 };
 
-export function isBabelSource(filename: string): boolean {
+export function isES3Source(filename: string): boolean {
 	return (
 		(filename.endsWith(".ts") || filename.endsWith(".tsx")) &&
 		!filename.endsWith(".d.ts")
 	);
 }
 
-export function scriptOutputPath(
+export function es3OutputPath(
 	webroot: string,
 	distRoot: string,
 	source: string,
 ): string {
 	const relative = path.relative(webroot, source);
-	if (
-		relative === ".." || relative.startsWith(`..${path.sep}`) ||
-		path.isAbsolute(relative) || !isBabelSource(relative)
-	) {
+	if (!isPathInside(webroot, source) || !isES3Source(relative)) {
 		throw new Error(`Not a TypeScript source in the webroot: ${source}`);
 	}
 	return path.join(distRoot, relative.replace(/\.tsx?$/, ".js"));
@@ -74,18 +72,21 @@ function sourceMapComment(filename: string): string {
 	return `\n//# sourceMappingURL=${path.basename(filename)}.map`;
 }
 
-export interface CompiledScript {
+export interface CompiledES3Script {
 	code: string;
 	map?: string;
 }
 
-export type ScriptCache = Map<string, Promise<CompiledScript | null>>;
-
-function writeCompiledFile(
+export function writeCompiledES3Script(
 	source: string,
 	output: string,
-	result: CompiledScript,
+	result: CompiledES3Script | null,
 ): void {
+	if (!result) {
+		fs.rmSync(output, { force: true });
+		fs.rmSync(`${output}.map`, { force: true });
+		return;
+	}
 	fs.mkdirSync(path.dirname(output), { recursive: true });
 
 	if (result.map) {
@@ -98,20 +99,17 @@ function writeCompiledFile(
 	fs.chmodSync(output, fs.statSync(source).mode);
 }
 
-export async function prepareScript(
+export async function prepareES3Script(
 	webroot: Webroot,
 	source: string,
 	dist: string = webroot.dist,
-): Promise<CompiledScript | null> {
-	const output = scriptOutputPath(webroot.path, dist, source);
+): Promise<CompiledES3Script | null> {
+	const output = es3OutputPath(webroot.config.webroot, dist, source);
 
 	const result = await babel.transformFileAsync(source, {
-		...SHOWDOWN_BABEL_OPTIONS,
+		...ES3_BABEL_OPTIONS,
 		cwd: ASTRALHP_ROOT,
-		sourceFileName: path
-			.relative(path.dirname(output), source)
-			.split(path.sep)
-			.join("/"),
+		sourceFileName: relativePosixPath(path.dirname(output), source),
 	});
 	if (result?.code === null || result?.code === undefined) return null;
 	let code = result.code;
@@ -120,39 +118,4 @@ export async function prepareScript(
 		if (!code.includes("sourceMappingURL=")) code += sourceMapComment(output);
 	}
 	return { code, ...(result.map ? { map: JSON.stringify(result.map) } : {}) };
-}
-
-export async function compileScript(
-	webroot: Webroot,
-	source: string,
-	dist: string = webroot.dist,
-	cache?: ScriptCache,
-): Promise<string | null> {
-	const output = scriptOutputPath(webroot.path, dist, source);
-	let pending = cache?.get(source);
-	if (!pending) {
-		pending = prepareScript(webroot, source, dist);
-		cache?.set(source, pending);
-	}
-	const result = await pending;
-	if (!result) {
-		fs.rmSync(output, { force: true });
-		fs.rmSync(`${output}.map`, { force: true });
-		return null;
-	}
-
-	writeCompiledFile(source, output, result);
-	return output;
-}
-
-export async function compileScripts(
-	webroot: Webroot,
-	sources: Iterable<string>,
-	dist: string = webroot.dist,
-	cache?: ScriptCache,
-): Promise<string[]> {
-	const outputs = await Promise.all(
-		[...new Set(sources)].map(source => compileScript(webroot, source, dist, cache)),
-	);
-	return outputs.filter(output => output !== null);
 }

@@ -56,12 +56,13 @@ test("CGI reads exactly CONTENT_LENGTH bytes and preserves binary input", async 
 });
 
 test("CGI Apache rules preserve static routing without requiring proxy modules", () => {
-	const block = apacheBlock(0, [{ pattern: "/live", regex: "^live/?$" }], "apache-cgi");
+	const { config } = new Webroot({ webroot: "/tmp", adapter: "apache-cgi", port: 0 });
+	const block = apacheBlock(config, [{ pattern: "/live", regex: "^live/?$" }]);
 	assert.match(block, /Options \+ExecCGI/);
 	assert.match(block, /SetHandler cgi-script/);
 	assert.match(block, /"\.caches\/dist\/\.server\/cgi\.mjs" \[END\]/);
 	assert.doesNotMatch(block, /ProxyPreserveHost|RequestHeader|127\.0\.0\.1/);
-	assert.doesNotMatch(apacheBlock(0, [], "apache-cgi"), /ExecCGI|cgi-script/);
+	assert.doesNotMatch(apacheBlock(config), /ExecCGI|cgi-script/);
 	assert.throws(() => new Webroot({ webroot: "/tmp", runtimePath: "/bin/bun\ninvalid" }), /runtimePath/);
 	assert.throws(
 		() => new AstralHPServer([new Webroot({ webroot: "/tmp", adapter: "apache-cgi" })]), /run under Apache/,
@@ -89,7 +90,7 @@ for (const runtime of ["Node", "Bun"]) {
 			};`,
 		);
 		const webroot = await Webroot.resolve(root);
-		assert.equal(webroot.runtimePath, runtimePath);
+		assert.equal(webroot.config.runtimePath, runtimePath);
 		fs.writeFileSync(path.join(root, "index.astro"), '<p>{Astro.url.searchParams.get("message")}</p>');
 		fs.writeFileSync(path.join(root, "about.astro"), "---\nexport const prerender = true;\n---\nStatic about");
 		fs.writeFileSync(path.join(root, "status.astro.js"), "export const GET = () => Response.json({ ready: true });");

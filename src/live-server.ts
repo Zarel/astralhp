@@ -4,6 +4,7 @@ import type { AddressInfo } from "node:net";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { contentType } from "./mime.js";
+import { canonicalPath, resolveServerPort } from "./utils.js";
 import type { Webroot } from "./webroot.js";
 
 const DOCUMENT_ROOT_HEADER = "x-astralhp-document-root";
@@ -18,25 +19,6 @@ type RequestHandler = (
 export interface LiveServerOptions {
 	host?: string;
 	port?: number;
-}
-
-function canonicalDirectory(directory: string): string {
-	try {
-		return fs.realpathSync.native(path.resolve(directory));
-	} catch {
-		return path.resolve(directory);
-	}
-}
-
-export function serverPort(defaultPort = 4321): number {
-	const value = process.env.PORT;
-	if (value === undefined) return defaultPort;
-
-	const port = Number(value);
-	if (!Number.isInteger(port) || port < 0 || port > 65535) {
-		throw new Error(`Invalid PORT: ${value}`);
-	}
-	return port;
 }
 
 function sendFile(
@@ -78,24 +60,24 @@ export class AstralHPServer {
 		if (!webroots.length) {
 			throw new Error("AstralHPServer requires at least one webroot");
 		}
-		if (webroots.some(webroot => webroot.adapter === "apache-cgi")) {
+		if (webroots.some(webroot => webroot.config.adapter === "apache-cgi")) {
 			throw new Error("apache-cgi sites run under Apache; use astralhp dev for local development");
 		}
-		if (webroots.some(webroot => webroot.adapter === "apache-static")) {
+		if (webroots.some(webroot => webroot.config.adapter === "apache-static")) {
 			throw new Error("apache-static sites are served by Apache; use astralhp dev for local development");
 		}
 		this.webroots = [...webroots];
 		this.host = options.host ?? process.env.HOST ?? "127.0.0.1";
-		this.port = options.port ?? serverPort(webroots[0]!.port);
+		this.port = options.port ?? resolveServerPort(webroots[0]!.config.port);
 		if (
 			options.port === undefined &&
-			webroots.some(webroot => serverPort(webroot.port) !== this.port)
+			webroots.some(webroot => resolveServerPort(webroot.config.port) !== this.port)
 		) {
 			throw new Error(
 				"Webroots with different ports require separate AstralHPServer listeners",
 			);
 		}
-		const nodeWebroots = webroots.filter(webroot => webroot.adapter === "node");
+		const nodeWebroots = webroots.filter(webroot => webroot.config.adapter === "node");
 		if (nodeWebroots.length > 1) {
 			throw new Error(
 				`Node webroots sharing port ${this.port} must use different ports`,
@@ -104,14 +86,14 @@ export class AstralHPServer {
 		this.nodeWebroot = nodeWebroots[0] ?? null;
 
 		for (const webroot of webroots) {
-			if (webroot.adapter === "apache-proxy") {
-				const documentRoot = canonicalDirectory(webroot.path);
+			if (webroot.config.adapter === "apache-proxy") {
+				const documentRoot = canonicalPath(webroot.config.webroot);
 				const existing = this.webrootsByDocumentRoot.get(documentRoot);
 				if (existing && existing !== webroot) {
 					throw new Error(
-						`Document root ${documentRoot} is configured by both ${existing.configFile ?? existing.path} and ${
-							webroot.configFile ?? webroot.path
-						}`,
+						`Document root ${documentRoot} is configured by both ${
+							existing.configFile ?? existing.config.webroot
+						} and ${webroot.configFile ?? webroot.config.webroot}`,
 					);
 				}
 				this.webrootsByDocumentRoot.set(documentRoot, webroot);
@@ -128,7 +110,7 @@ export class AstralHPServer {
 	}
 
 	webrootForDocumentRoot(documentRoot: string): Webroot | null {
-		return this.webrootsByDocumentRoot.get(canonicalDirectory(documentRoot)) ?? null;
+		return this.webrootsByDocumentRoot.get(canonicalPath(documentRoot)) ?? null;
 	}
 
 	webrootForRequest(
@@ -155,23 +137,19 @@ export class AstralHPServer {
 			response.end("Unknown Webroot");
 			return;
 		}
-		if (webroot.isPrivateRequest(request.url)) {
+		const lookup = webroot.lookup(request.url);
+		if (lookup.kind === "private") {
 			response.statusCode = 403;
 			response.end();
 			return;
 		}
-		const filename = (
-			request.method === "GET" || request.method === "HEAD"
-		) && (
-			webroot.resolveDistFile(request.url) || webroot.resolveStaticFile(request.url)
-		);
-		if (filename) {
-			sendFile(request, response, filename);
+		if (lookup.kind === "file" && (request.method === "GET" || request.method === "HEAD")) {
+			sendFile(request, response, lookup.filename);
 			return;
 		}
 
 		const handler = this.handlers.get(webroot);
-		if (!handler) throw new Error(`No Astro handler loaded for ${webroot.path}`);
+		if (!handler) throw new Error(`No Astro handler loaded for ${webroot.config.webroot}`);
 		let nextCalled = false;
 		let nextError: unknown;
 		await handler(request, response, error => {
@@ -190,20 +168,20 @@ export class AstralHPServer {
 		for (const webroot of this.webroots) {
 			if (!fs.existsSync(webroot.dist)) {
 				throw new Error(
-					`No build found. Run "astralhp build ${webroot.path}" first.`,
+					`No build found. Run "astralhp build ${webroot.config.webroot}" first.`,
 				);
 			}
 			const entrypoint = path.join(webroot.dist, ".server", "app.mjs");
 			if (!fs.existsSync(entrypoint)) {
 				throw new Error(
-					`Build for ${webroot.path} has no Astro server entrypoint. Run "astralhp build ${webroot.path}" again.`,
+					`Build for ${webroot.config.webroot} has no Astro server entrypoint. Run "astralhp build ${webroot.config.webroot}" again.`,
 				);
 			}
 			const module = await import(pathToFileURL(entrypoint).href) as {
 				handler?: RequestHandler;
 			};
 			if (typeof module.handler !== "function") {
-				throw new Error(`Astro server entrypoint for ${webroot.path} has no handler`);
+				throw new Error(`Astro server entrypoint for ${webroot.config.webroot} has no handler`);
 			}
 			this.handlers.set(webroot, module.handler);
 		}
@@ -222,7 +200,7 @@ export class AstralHPServer {
 	get startupMessage(): string {
 		return [
 			`AstralHP running, listening to ${this.url}`,
-			...this.webroots.map(webroot => `Serving ${webroot.path}`),
+			...this.webroots.map(webroot => `Serving ${webroot.config.webroot}`),
 		].join("\n");
 	}
 
@@ -253,7 +231,7 @@ export async function startLive(
 
 	const groups = new Map<number, Webroot[]>();
 	for (const webroot of roots) {
-		const port = options.port ?? serverPort(webroot.port);
+		const port = options.port ?? resolveServerPort(webroot.config.port);
 		const group = groups.get(port) ?? [];
 		group.push(webroot);
 		groups.set(port, group);

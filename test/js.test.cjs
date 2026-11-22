@@ -8,6 +8,7 @@ const test = require("node:test");
 const { pathToFileURL } = require("node:url");
 const { build, dev, start, Webroot } = require("astralhp");
 const { AstralHPServer } = require("../dist/live-server.js");
+const { ES3Scripts } = require("../dist/es3.js");
 const { AssetBundles } = require("../dist/bundles.js");
 const { EventEmitter } = require("node:events");
 
@@ -93,7 +94,7 @@ test("JS bundles use stable paths, include dependencies and CSS, and render on s
 	assert.equal(module.encoded, "AAAA");
 	assert.equal((await module.load()).lazy, "lazy-one");
 	assert.equal(await module.answer({ value: "custom" }), "custom");
-	const htaccess = fs.readFileSync(path.join(site.path, ".htaccess"), "utf8");
+	const htaccess = fs.readFileSync(path.join(site.config.webroot, ".htaccess"), "utf8");
 	assert(htaccess.indexOf("# Serve built files") < htaccess.indexOf("# Serve all other files"));
 	const server = new AstralHPServer([site], { port: 0 });
 	await server.listen();
@@ -112,11 +113,11 @@ test("JS bundles use stable paths, include dependencies and CSS, and render on s
 	// dependency, changes the rendered cache-busting URL.
 	await build(site);
 	assert.equal(bundleURL(fs.readFileSync(path.join(site.dist, "index.html"), "utf8")), url);
-	fs.writeFileSync(path.join(site.path, "scripts/dependency.js"), 'export const message = "dependency-two";');
+	fs.writeFileSync(path.join(site.config.webroot, "scripts/dependency.js"), 'export const message = "dependency-two";');
 	await build(site);
 	const updated = bundleURL(fs.readFileSync(path.join(site.dist, "index.html"), "utf8"));
 	assert.notEqual(updated, url);
-	fs.writeFileSync(path.join(site.path, "scripts/lazy.ts"), 'export const lazy: string = "lazy-two";');
+	fs.writeFileSync(path.join(site.config.webroot, "scripts/lazy.ts"), 'export const lazy: string = "lazy-two";');
 	await build(site);
 	assert.notEqual(bundleURL(fs.readFileSync(path.join(site.dist, "index.html"), "utf8")), updated);
 });
@@ -124,13 +125,15 @@ test("JS bundles use stable paths, include dependencies and CSS, and render on s
 test("serveSourceFiles can hide sources and maps while serving bundles, chunks, and minified files", async t => {
 	const site = fixture(t, { serveSourceFiles: false });
 	for (const file of ["vendor.min.js", "theme.scss", "view.tsx", "vendor.min.js.map"]) {
-		fs.writeFileSync(path.join(site.path, file), "fixture");
+		fs.writeFileSync(path.join(site.config.webroot, file), "fixture");
 	}
-	fs.writeFileSync(path.join(site.path, "version.js.astro.js"), 'export const GET = () => new Response("v1");');
+	fs.writeFileSync(
+		path.join(site.config.webroot, "version.js.astro.js"), 'export const GET = () => new Response("v1");',
+	);
 	await build(site);
 	const chunk = fs.readdirSync(path.join(site.dist, "scripts/_chunks")).find(file => file.endsWith(".js"));
 	assert(chunk);
-	const rules = fs.readFileSync(path.join(site.path, ".htaccess"), "utf8");
+	const rules = fs.readFileSync(path.join(site.config.webroot, ".htaccess"), "utf8");
 	const mapRule = rules.split("\n").findIndex(line => line.startsWith("RewriteRule") && line.includes("scss|map"));
 	const distRule = rules.split("\n").findIndex(line => line.includes('".caches/dist/$1" [END]'));
 	const jsRule = rules.split("\n").findIndex(line => line.startsWith("RewriteRule") && line.includes("(?<!"));
@@ -163,9 +166,9 @@ test("serveSourceFiles can hide sources and maps while serving bundles, chunks, 
 
 test("JS rejects computed sources and conflicting ES3 output paths", async t => {
 	const site = fixture(t);
-	fs.rmSync(path.join(site.path, "live.astro"));
+	fs.rmSync(path.join(site.config.webroot, "live.astro"));
 	fs.writeFileSync(
-		path.join(site.path, "index.astro"),
+		path.join(site.config.webroot, "index.astro"),
 		`---
 import { JS } from "astralhp/components";
 const src = "/scripts/app.ts";
@@ -173,9 +176,9 @@ const src = "/scripts/app.ts";
 <JS src={src} />`,
 	);
 	await assert.rejects(build(site), /requires a literal src/);
-	fs.writeFileSync(path.join(site.path, "scripts/app.min.ts"), "console.log(1);");
+	fs.writeFileSync(path.join(site.config.webroot, "scripts/app.min.ts"), "console.log(1);");
 	fs.writeFileSync(
-		path.join(site.path, "index.astro"),
+		path.join(site.config.webroot, "index.astro"),
 		`---
 import { JS, ES3 } from "astralhp/components";
 ---
@@ -187,23 +190,23 @@ import { JS, ES3 } from "astralhp/components";
 test("JS inline embeds the bundle and imported CSS while preserving lazy imports and script text", async t => {
 	const site = fixture(t);
 	fs.appendFileSync(
-		path.join(site.path, "scripts/app.ts"),
+		path.join(site.config.webroot, "scripts/app.ts"),
 		`
 export const text = "</ScRiPt><script>bad()</script><!--<script>";
 export const location = import.meta.url;
 `,
 	);
 	fs.writeFileSync(
-		path.join(site.path, ".components/Assets.astro"),
+		path.join(site.config.webroot, ".components/Assets.astro"),
 		`---
 import { JS } from "astralhp/components";
 const inline = !Astro.url.searchParams.has("external");
 ---
 <JS src="../scripts/app.ts" inline={inline} nonce="test-nonce" data-test="inline" />`,
 	);
-	fs.mkdirSync(path.join(site.path, "nested"));
+	fs.mkdirSync(path.join(site.config.webroot, "nested"));
 	fs.writeFileSync(
-		path.join(site.path, "nested/live.astro"),
+		path.join(site.config.webroot, "nested/live.astro"),
 		`---
 import Assets from "../.components/Assets.astro";
 export const prerender = false;
@@ -233,7 +236,7 @@ export const prerender = false;
 		}
 	};
 	await check(fs.readFileSync(path.join(site.dist, "index.html"), "utf8"));
-	fs.rmSync(path.join(site.path, "scripts"), { recursive: true });
+	fs.rmSync(path.join(site.config.webroot, "scripts"), { recursive: true });
 	const server = new AstralHPServer([site], { port: 0 });
 	await server.listen();
 	try {
@@ -256,7 +259,9 @@ export const prerender = false;
 
 test("JS development serves sources and minified bundles and rebuilds imported dependencies", async t => {
 	const site = fixture(t);
-	fs.appendFileSync(path.join(site.path, ".components/Assets.astro"), '\n<Script src="../scripts/app.ts" inline />');
+	fs.appendFileSync(
+		path.join(site.config.webroot, ".components/Assets.astro"), '\n<Script src="../scripts/app.ts" inline />',
+	);
 	const reservation = net.createServer();
 	await new Promise(resolve => reservation.listen(0, "127.0.0.1", resolve));
 	const port = reservation.address().port;
@@ -273,7 +278,7 @@ test("JS development serves sources and minified bundles and rebuilds imported d
 		assert.match(await (await fetch(base + bundleURL(home, "plain"))).text(), /dependency-one/);
 		assert.equal(await (await fetch(`${base}/scripts/plain.js`)).text(), plainJS);
 		assert.match(await (await fetch(`${base}${before}`)).text(), /dependency-one/);
-		fs.writeFileSync(path.join(site.path, "scripts/dependency.js"), 'export const message = "dev-updated";');
+		fs.writeFileSync(path.join(site.config.webroot, "scripts/dependency.js"), 'export const message = "dev-updated";');
 		let after = before;
 		const deadline = Date.now() + 15000;
 		while (after === before && Date.now() < deadline) {
@@ -294,16 +299,16 @@ test("JS development recovers after an imported dependency has a syntax error", 
 	const watcher = new EventEmitter();
 	watcher.add = () => {};
 	const messages = new EventEmitter();
-	const plugin = new AssetBundles(site).plugin(new Set());
+	const plugin = new AssetBundles(site, new ES3Scripts(site)).plugin();
 	plugin.configureServer({
 		watcher,
 		environments: {},
 		ws: { send: message => messages.emit(message.type, message) },
 		config: { logger: { error() {} } },
 	});
-	const filename = path.join(site.path, ".components/Assets.astro");
+	const filename = path.join(site.config.webroot, ".components/Assets.astro");
 	await plugin.transform.handler(fs.readFileSync(filename, "utf8"), filename);
-	const dependency = path.join(site.path, "scripts/dependency.js");
+	const dependency = path.join(site.config.webroot, "scripts/dependency.js");
 	const failed = new Promise(resolve => messages.once("error", resolve));
 	fs.writeFileSync(dependency, "export const message = ;");
 	watcher.emit("all", "change", dependency);

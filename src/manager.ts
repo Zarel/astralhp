@@ -8,8 +8,9 @@ import path from "node:path";
 import type { DatabaseSync } from "node:sqlite";
 import { text } from "node:stream/consumers";
 import { setTimeout as delay } from "node:timers/promises";
-import { type AstralHPLiveProcess, start } from "./astro.js";
-import { canonicalPath, findProjectDir, type ManagedProject, managedProject } from "./config-loader.js";
+import { type AstralHPLiveProcess, start } from "./astro-process.js";
+import { findProjectDir, type ManagedProject, managedProject } from "./config-loader.js";
+import { canonicalPath } from "./utils.js";
 import { Webroot } from "./webroot.js";
 
 const RUNTIME_DIRECTORY = path.join(".caches", "run");
@@ -192,7 +193,7 @@ class ServerManager {
 					pid: process.pid,
 					worker: this.worker ? "running" : "stopped",
 					socket: path.resolve(CONTROL_SOCKET),
-					webroots: this.webroots.map(webroot => webroot.path),
+					webroots: this.webroots.map(webroot => webroot.config.webroot),
 					lookupDirectories: project.lookupDirectories,
 				};
 				res.end(JSON.stringify(info));
@@ -213,7 +214,9 @@ class ServerManager {
 		const { DatabaseSync } = await import("node:sqlite");
 		const lock = new DatabaseSync(path.join(runtime, "manager.sqlite"));
 		try {
-			const reply = await RemoteManager.claimOrContact(lock, this.webroots.map(site => canonicalPath(site.path)));
+			const reply = await RemoteManager.claimOrContact(
+				lock, this.webroots.map(site => canonicalPath(site.config.webroot)),
+			);
 			if (reply !== null) {
 				if (!process.send) throw new Error(reply);
 				lock.close();
@@ -284,7 +287,7 @@ class ServerManager {
 		switch (req.url) {
 			case "/start": {
 				const requested: string[] = JSON.parse(await text(req));
-				const serving = this.webroots.map(site => canonicalPath(site.path));
+				const serving = this.webroots.map(site => canonicalPath(site.config.webroot));
 				if (requested.length !== serving.length || !requested.every(root => serving.includes(root))) {
 					throw new Error([
 						`This project's manager is configured for: ${serving.join(", ")}.`,

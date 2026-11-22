@@ -35,16 +35,19 @@ import ES3 from "./unrelated.astro";
 <ES3 src={anything} />
 {false && <Legacy src="../scripts/legacy.ts" defer />}
 <Assets.ES3 src="/scripts/legacy.ts" />`;
-	const result = assetReferences(site, path.join(site.path, "nested/page.astro"), source);
-	assert.deepEqual(result.sources, [path.join(site.path, "scripts/legacy.ts")]);
-	assert.match(result.code, /<Legacy src=\{"\/scripts\/legacy.ts"\} defer/);
-	assert.match(result.code, /😀<!-- <Legacy src="missing.ts" \/> -->/);
-	assert.match(result.code, /<ES3 src=\{anything\}/);
+	const result = assetReferences(site, path.join(site.config.webroot, "nested/page.astro"), source);
+	assert.deepEqual(result.sources, [path.join(site.config.webroot, "scripts/legacy.ts")]);
+	assert.deepEqual(result.assets.map(asset => asset.pathname), ["/scripts/legacy.ts", "/scripts/legacy.ts"]);
+	const [legacy, namespaced] = result.assets;
+	assert.equal(source.slice(legacy.start, legacy.end), '"../scripts/legacy.ts"');
+	assert.equal(legacy.insert, source.lastIndexOf("<Legacy") + "<Legacy".length);
+	assert.equal(source.slice(namespaced.start, namespaced.end), '"/scripts/legacy.ts"');
+	assert.equal(namespaced.insert, source.indexOf("<Assets.ES3") + "<Assets.ES3".length);
 });
 
 test("rejects dynamic, missing, external, and escaping ES3 sources", t => {
 	const site = fixture(t);
-	const filename = path.join(site.path, "index.astro");
+	const filename = path.join(site.config.webroot, "index.astro");
 	const check = tag => assetReferences(site, filename, `---\nimport { ES3 } from "astralhp/components";\n---\n${tag}`);
 	for (const tag of ["<ES3 src={name} />", "<ES3 {...props} />", '<ES3 src="/scripts/legacy.ts" src="other.ts" />']) {
 		assert.throws(() => check(tag), /requires a literal src/);
@@ -67,19 +70,19 @@ test("rejects dynamic, missing, external, and escaping ES3 sources", t => {
 
 test("builds only ES3 references from prerendered pages and dynamic shared components", async t => {
 	const site = fixture(t);
-	fs.mkdirSync(path.join(site.path, ".components"));
-	fs.writeFileSync(path.join(site.path, "scripts/unused.ts"), "THIS IS NOT VALID TYPESCRIPT");
-	fs.writeFileSync(path.join(site.path, "scripts/static.ts"), "const prerendered: number = 2;");
-	fs.writeFileSync(path.join(site.path, "scripts/conditional.ts"), "const conditional: number = 3;");
+	fs.mkdirSync(path.join(site.config.webroot, ".components"));
+	fs.writeFileSync(path.join(site.config.webroot, "scripts/unused.ts"), "THIS IS NOT VALID TYPESCRIPT");
+	fs.writeFileSync(path.join(site.config.webroot, "scripts/static.ts"), "const prerendered: number = 2;");
+	fs.writeFileSync(path.join(site.config.webroot, "scripts/conditional.ts"), "const conditional: number = 3;");
 	fs.writeFileSync(
-		path.join(site.path, ".components/Shared.astro"),
+		path.join(site.config.webroot, ".components/Shared.astro"),
 		`---
 import { ES3 } from "astralhp/components";
 ---
 <ES3 src="../scripts/legacy.ts" defer data-test="shared" />`,
 	);
 	fs.writeFileSync(
-		path.join(site.path, "index.astro"),
+		path.join(site.config.webroot, "index.astro"),
 		`---
 import Shared from "./.components/Shared.astro";
 import { ES3 } from "astralhp/components";
@@ -89,7 +92,7 @@ export const prerender = false;
 {Astro.url.searchParams.has("legacy") && <ES3 src="/scripts/conditional.ts" />}`,
 	);
 	fs.writeFileSync(
-		path.join(site.path, "about.astro"),
+		path.join(site.config.webroot, "about.astro"),
 		`---
 import { ES3 } from "astralhp/components";
 export const prerender = true;
@@ -108,7 +111,7 @@ export const prerender = true;
 	const originalURL = scriptURL(site, "static");
 	assert(fs.readFileSync(path.join(site.dist, "about.html"), "utf8").includes(`src="${originalURL}"`));
 	// Dynamic pages use the compiled hash without requiring the TypeScript source.
-	fs.rmSync(path.join(site.path, "scripts/legacy.ts"));
+	fs.rmSync(path.join(site.config.webroot, "scripts/legacy.ts"));
 	const server = new AstralHPServer([site], { port: 0 });
 	await server.listen();
 	try {
@@ -124,15 +127,15 @@ export const prerender = true;
 		await server.close();
 	}
 	// Rebuilding after removing a reference must not retain its old output.
-	fs.writeFileSync(path.join(site.path, "index.astro"), "No legacy scripts");
-	fs.writeFileSync(path.join(site.path, "scripts/static.ts"), "const prerendered: number | string = 2;");
+	fs.writeFileSync(path.join(site.config.webroot, "index.astro"), "No legacy scripts");
+	fs.writeFileSync(path.join(site.config.webroot, "scripts/static.ts"), "const prerendered: number | string = 2;");
 	await build(site);
 	assert(!fs.existsSync(path.join(site.dist, "scripts/legacy.js")));
 	assert(!fs.existsSync(path.join(site.dist, "scripts/conditional.js")));
 	assert(fs.existsSync(path.join(site.dist, "scripts/static.js")));
 	assert.equal(scriptURL(site, "static"), originalURL);
 	assert(fs.readFileSync(path.join(site.dist, "about.html"), "utf8").includes(`src="${originalURL}"`));
-	fs.writeFileSync(path.join(site.path, "scripts/static.ts"), "const prerendered: number = 3;");
+	fs.writeFileSync(path.join(site.config.webroot, "scripts/static.ts"), "const prerendered: number = 3;");
 	await build(site);
 	assert.notEqual(scriptURL(site, "static"), originalURL);
 	assert(fs.readFileSync(path.join(site.dist, "about.html"), "utf8").includes(`src="${scriptURL(site, "static")}"`));
@@ -149,8 +152,8 @@ async function until(check) {
 
 test("development compiles and watches ES3 references without compiling unrelated TypeScript", async t => {
 	const site = fixture(t);
-	fs.writeFileSync(path.join(site.path, "unused.ts"), "THIS IS NOT VALID TYPESCRIPT");
-	const page = path.join(site.path, "index.astro");
+	fs.writeFileSync(path.join(site.config.webroot, "unused.ts"), "THIS IS NOT VALID TYPESCRIPT");
+	const page = path.join(site.config.webroot, "index.astro");
 	fs.writeFileSync(page, `---\nimport { ES3 } from "astralhp/components";\n---\n<ES3 src="scripts/legacy.ts" />`);
 	const reservation = net.createServer();
 	await new Promise(resolve => reservation.listen(0, "127.0.0.1", resolve));
@@ -166,7 +169,7 @@ test("development compiles and watches ES3 references without compiling unrelate
 		const output = path.join(site.dist, "scripts/legacy.js");
 		assert.match(fs.readFileSync(output, "utf8"), /var value=1/);
 		assert(!fs.existsSync(path.join(site.dist, "unused.js")));
-		fs.writeFileSync(path.join(site.path, "scripts/legacy.ts"), "const value: number = 42;");
+		fs.writeFileSync(path.join(site.config.webroot, "scripts/legacy.ts"), "const value: number = 42;");
 		await until(() => /var value=42/.test(fs.readFileSync(output, "utf8")));
 		await until(async () => (await (await fetch(base)).text()).includes(`src="${scriptURL(site, "legacy")}"`));
 		assert.notEqual(scriptURL(site, "legacy"), originalURL);

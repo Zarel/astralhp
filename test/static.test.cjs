@@ -7,7 +7,7 @@ const path = require("node:path");
 const test = require("node:test");
 const { build, dev, start, Webroot } = require("astralhp");
 const { apacheBlock, writeApacheConfig } = require("../dist/apache.js");
-const { astralhpIntegration } = require("../dist/webroot.js");
+const { astralhpIntegration } = require("../dist/astro-integration.js");
 
 function fixture(t) {
 	const root = fs.mkdtempSync(path.resolve(__dirname, "../.astralhp-test-static-"));
@@ -20,32 +20,34 @@ test("static Apache rules require neither a proxy port nor a CGI handler", t => 
 	const original = process.env.PORT;
 	process.env.PORT = "invalid";
 	t.after(() => original === undefined ? delete process.env.PORT : process.env.PORT = original);
-	const block = apacheBlock(undefined, [], "apache-static");
+	const block = apacheBlock(site.config);
 	assert.doesNotMatch(block, /RewriteRule "\^\$"/);
 	assert.match(block, /Serve built files/);
 	assert.match(block, /Remove .html from URLs/);
 	assert.doesNotMatch(block, /ProxyPass|ProxyPreserveHost|RequestHeader|ExecCGI|cgi-script|127\.0\.0\.1/);
 	assert.equal(fs.readFileSync(writeApacheConfig(site), "utf8"), `${block}\n`);
 	assert.throws(
-		() => apacheBlock(0, [{ pattern: "/live", regex: "^live$" }], "apache-static"), /apache-static.*\/live/,
+		() => apacheBlock(site.config, [{ pattern: "/live", regex: "^live$" }]), /apache-static.*\/live/,
 	);
 });
 
 test("apache-static builds default and parameterized static pages with compiled assets", async t => {
 	const site = fixture(t);
 	fs.writeFileSync(
-		path.join(site.path, "index.astro"), `---
+		path.join(site.config.webroot, "index.astro"), `---
 import { CSS, JS, ES3 } from "astralhp/components";
 ---
 <h1>Static home</h1>
 <CSS src="/style.scss" /><JS src="/app.ts" /><ES3 src="/legacy.ts" />`,
 	);
-	fs.writeFileSync(path.join(site.path, "app.ts"), 'console.log("modern");');
-	fs.writeFileSync(path.join(site.path, "legacy.ts"), 'const legacy: string = "legacy";');
-	fs.writeFileSync(path.join(site.path, "style.scss"), "$color: red; body { color: $color; }");
-	fs.writeFileSync(path.join(site.path, "feed.xml.astro.ts"), 'export const GET = () => new Response("<feed/>");');
+	fs.writeFileSync(path.join(site.config.webroot, "app.ts"), 'console.log("modern");');
+	fs.writeFileSync(path.join(site.config.webroot, "legacy.ts"), 'const legacy: string = "legacy";');
+	fs.writeFileSync(path.join(site.config.webroot, "style.scss"), "$color: red; body { color: $color; }");
 	fs.writeFileSync(
-		path.join(site.path, "[id].astro"), `---
+		path.join(site.config.webroot, "feed.xml.astro.ts"), 'export const GET = () => new Response("<feed/>");',
+	);
+	fs.writeFileSync(
+		path.join(site.config.webroot, "[id].astro"), `---
 export function getStaticPaths() { return [{ params: { id: "about" } }]; }
 ---
 <p>{Astro.params.id}</p>`,
@@ -60,14 +62,14 @@ export function getStaticPaths() { return [{ params: { id: "about" } }]; }
 	}
 	assert.match(fs.readFileSync(path.join(site.dist, "about.html"), "utf8"), /<p>about<\/p>/);
 	assert.equal(fs.existsSync(path.join(site.dist, ".server")), false);
-	const htaccess = fs.readFileSync(path.join(site.path, ".htaccess"), "utf8");
+	const htaccess = fs.readFileSync(path.join(site.config.webroot, ".htaccess"), "utf8");
 	assert.doesNotMatch(htaccess, /ProxyPreserveHost|ExecCGI|cgi-script/);
 	await assert.rejects(start(site), /apache-static sites are served by Apache/);
 	// A failed rebuild must retain the previous deployed site and Apache rules.
-	fs.writeFileSync(path.join(site.path, "live.astro"), "---\nexport const prerender = false;\n---\nDynamic");
+	fs.writeFileSync(path.join(site.config.webroot, "live.astro"), "---\nexport const prerender = false;\n---\nDynamic");
 	await assert.rejects(build(site), /apache-static does not support dynamic routes:[\s\S]*live\.astro/);
 	assert.equal(fs.readFileSync(path.join(site.dist, "index.html"), "utf8"), html);
-	assert.equal(fs.readFileSync(path.join(site.path, ".htaccess"), "utf8"), htaccess);
+	assert.equal(fs.readFileSync(path.join(site.config.webroot, ".htaccess"), "utf8"), htaccess);
 });
 
 test("apache-static also rejects injected dynamic endpoints", () => {
@@ -92,7 +94,7 @@ test("apache-static also rejects injected dynamic endpoints", () => {
 
 test("apache-static prerenders a JSON endpoint at / and replaces it on rebuild", async t => {
 	const site = fixture(t);
-	const source = path.join(site.path, "index.astro.ts");
+	const source = path.join(site.config.webroot, "index.astro.ts");
 	fs.writeFileSync(
 		source, `
 export function GET({ request, url, routePattern }) {
@@ -101,33 +103,35 @@ export function GET({ request, url, routePattern }) {
 `,
 	);
 	await build(site);
-	const body = site.resolveDistFile("/");
+	const body = site.lookup("/").filename;
 	assert.equal(path.relative(site.dist, body), "index");
 	assert.deepEqual(JSON.parse(fs.readFileSync(body)), ["/index", "/index", "/"]);
 	assert.ok(
-		fs.readFileSync(path.join(site.path, ".htaccess"), "utf8").includes('RewriteRule "^$" ".caches/dist/index"'),
+		fs.readFileSync(path.join(site.config.webroot, ".htaccess"), "utf8").includes(
+			'RewriteRule "^$" ".caches/dist/index"',
+		),
 	);
 
 	fs.unlinkSync(source);
-	fs.writeFileSync(path.join(site.path, "index.astro"), "<h1>Home</h1>");
+	fs.writeFileSync(path.join(site.config.webroot, "index.astro"), "<h1>Home</h1>");
 	await build(site);
-	assert.match(fs.readFileSync(site.resolveDistFile("/"), "utf8"), /<h1>Home<\/h1>/);
+	assert.match(fs.readFileSync(site.lookup("/").filename, "utf8"), /<h1>Home<\/h1>/);
 	assert.equal(fs.existsSync(body), false);
-	const rules = fs.readFileSync(path.join(site.path, ".htaccess"), "utf8");
+	const rules = fs.readFileSync(path.join(site.config.webroot, ".htaccess"), "utf8");
 	assert.ok(rules.includes('RewriteRule "^$" ".caches/dist/index.html" [END]'));
 	assert.ok(!rules.includes('RewriteRule "^$" ".caches/dist/index" [END]'));
 });
 
 test("Apache aliases a built index.json endpoint when there is no homepage", async t => {
 	const site = fixture(t);
-	const source = path.join(site.path, "index.json.astro.ts");
-	const rules = () => fs.readFileSync(path.join(site.path, ".htaccess"), "utf8");
+	const source = path.join(site.config.webroot, "index.json.astro.ts");
+	const rules = () => fs.readFileSync(path.join(site.config.webroot, ".htaccess"), "utf8");
 	fs.writeFileSync(source, "export const GET = () => Response.json({ ready: true });");
 	await build(site);
 	assert.deepEqual(JSON.parse(fs.readFileSync(path.join(site.dist, "index.json"))), { ready: true });
 	assert.ok(rules().includes('RewriteRule "^$" ".caches/dist/index.json" [END]'));
 
-	const home = path.join(site.path, "index.astro");
+	const home = path.join(site.config.webroot, "index.astro");
 	fs.writeFileSync(home, "<h1>Home</h1>");
 	await build(site);
 	assert.deepEqual(rules().match(/^RewriteRule "\^\$".*$/gm), ['RewriteRule "^$" ".caches/dist/index.html" [END]']);
@@ -140,8 +144,8 @@ test("Apache aliases a built index.json endpoint when there is no homepage", asy
 });
 
 test("Node serves the prerendered root endpoint as an extensionless static file", async t => {
-	const site = new Webroot({ webroot: fixture(t).path, adapter: "node" });
-	const source = path.join(site.path, "index.astro.js");
+	const site = new Webroot({ webroot: fixture(t).config.webroot, adapter: "node" });
+	const source = path.join(site.config.webroot, "index.astro.js");
 	fs.writeFileSync(
 		source, `export const GET = () => new Response(new Uint8Array([0, 255, 128]), {
 	headers: { "content-type": "application/vnd.astralhp.test" }
@@ -166,7 +170,7 @@ test("Node serves the prerendered root endpoint as an extensionless static file"
 
 test("apache-static supports local dev and rejects dynamic pages at startup", async t => {
 	const site = fixture(t);
-	fs.writeFileSync(path.join(site.path, "index.astro"), "Static development");
+	fs.writeFileSync(path.join(site.config.webroot, "index.astro"), "Static development");
 	const reservation = net.createServer();
 	await new Promise(resolve => reservation.listen(0, "127.0.0.1", resolve));
 	const port = reservation.address().port;
@@ -179,6 +183,6 @@ test("apache-static supports local dev and rejects dynamic pages at startup", as
 	} finally {
 		await worker.close();
 	}
-	fs.writeFileSync(path.join(site.path, "index.astro"), "---\nexport const prerender = false;\n---\nDynamic");
+	fs.writeFileSync(path.join(site.config.webroot, "index.astro"), "---\nexport const prerender = false;\n---\nDynamic");
 	await assert.rejects(dev(site, { port }), /apache-static does not support dynamic routes:[\s\S]*index\.astro/);
 });

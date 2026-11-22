@@ -62,23 +62,28 @@ function stylesheetURL(html) {
 
 test("CSS validates literal local sources with the same path rules as JS", t => {
 	const site = fixture(t);
-	const filename = path.join(site.path, "nested/page.astro");
-	const parse = tag =>
-		assetReferences(site, filename, `---\nimport { CSS } from "astralhp/components";\n---\n${tag}`, "CSS");
-	const relative = parse('<CSS src="../styles/plain.css" />');
-	assert.match(relative.code, /src=\{"\/styles\/plain.css"\}/);
-	assert.equal(parse('<CSS src="/styles/main.scss" />').assets[0].source, path.join(site.path, "styles/main.scss"));
+	const filename = path.join(site.config.webroot, "nested/page.astro");
+	const frontmatter = '---\nimport { CSS } from "astralhp/components";\n---\n';
+	const parse = tag => assetReferences(site, filename, frontmatter + tag, "CSS");
+	const tag = '<CSS src="../styles/plain.css" />';
+	const [relative] = parse(tag).assets;
+	assert.equal(relative.pathname, "/styles/plain.css");
+	assert.equal((frontmatter + tag).slice(relative.start, relative.end), '"../styles/plain.css"');
+	assert.equal(relative.insert, frontmatter.length + "<CSS".length);
+	assert.equal(
+		parse('<CSS src="/styles/main.scss" />').assets[0].source, path.join(site.config.webroot, "styles/main.scss"),
+	);
 	assert.throws(() => parse("<CSS src={filename} />"), /literal src/);
 	assert.throws(() => parse('<CSS src="../../outside.css" />'), /inside the webroot/);
 	assert.throws(() => parse('<CSS src="/missing.scss" />'), /does not exist/);
 	assert.throws(() => parse('<CSS src="https://example.test/style.css" />'), /local path/);
-	fs.symlinkSync(__filename, path.join(site.path, "styles/escape.css"));
+	fs.symlinkSync(__filename, path.join(site.config.webroot, "styles/escape.css"));
 	assert.throws(() => parse('<CSS src="/styles/escape.css" />'), /inside the webroot/);
 });
 
 test("CSS keeps plain files intact and compiles SCSS for prerendered and dynamic pages", async t => {
 	const site = fixture(t);
-	const plain = fs.readFileSync(path.join(site.path, "styles/plain.css"), "utf8");
+	const plain = fs.readFileSync(path.join(site.config.webroot, "styles/plain.css"), "utf8");
 	await build(site);
 	let html = fs.readFileSync(path.join(site.dist, "index.html"), "utf8");
 	const before = stylesheetURL(html);
@@ -92,14 +97,14 @@ test("CSS keeps plain files intact and compiles SCSS for prerendered and dynamic
 	assert.match(css, /\.\.\/images\/icon.svg/);
 	assert(fs.existsSync(path.join(site.dist, "styles/main.css.map")));
 	// A source-only comment changes the map, but not the served stylesheet.
-	fs.appendFileSync(path.join(site.path, "styles/_tokens.scss"), "\n// No output change\n");
+	fs.appendFileSync(path.join(site.config.webroot, "styles/_tokens.scss"), "\n// No output change\n");
 	await build(site);
 	assert.equal(stylesheetURL(fs.readFileSync(path.join(site.dist, "index.html"), "utf8")), before);
-	fs.writeFileSync(path.join(site.path, "styles/_tokens.scss"), "$color: #654321;");
+	fs.writeFileSync(path.join(site.config.webroot, "styles/_tokens.scss"), "$color: #654321;");
 	await build(site);
 	html = fs.readFileSync(path.join(site.dist, "index.html"), "utf8");
 	assert.notEqual(stylesheetURL(html), before);
-	fs.rmSync(path.join(site.path, "styles/main.scss"));
+	fs.rmSync(path.join(site.config.webroot, "styles/main.scss"));
 	const server = new AstralHPServer([site], { port: 0 });
 	await server.listen();
 	try {
@@ -116,9 +121,9 @@ test("CSS keeps plain files intact and compiles SCSS for prerendered and dynamic
 
 test("CSS rejects two sources that would use the same compiled stylesheet URL", async t => {
 	const site = fixture(t);
-	fs.writeFileSync(path.join(site.path, "styles/main.css"), "body { color: red; }");
+	fs.writeFileSync(path.join(site.config.webroot, "styles/main.css"), "body { color: red; }");
 	fs.writeFileSync(
-		path.join(site.path, "index.astro"),
+		path.join(site.config.webroot, "index.astro"),
 		`---
 import { CSS } from "astralhp/components";
 ---
@@ -130,7 +135,7 @@ import { CSS } from "astralhp/components";
 test("CSS inline embeds plain CSS and SCSS with asset-relative URLs on static and dynamic pages", async t => {
 	const site = fixture(t);
 	fs.appendFileSync(
-		path.join(site.path, "styles/plain.css"),
+		path.join(site.config.webroot, "styles/plain.css"),
 		`
 @import "./other.css";
 .icon { --image: url('../images/icon.svg'); background: image-set("../images/icon.svg" 1x); }
@@ -138,7 +143,7 @@ test("CSS inline embeds plain CSS and SCSS with asset-relative URLs on static an
 `,
 	);
 	fs.writeFileSync(
-		path.join(site.path, ".components/Styles.astro"),
+		path.join(site.config.webroot, ".components/Styles.astro"),
 		`---
 import { CSS } from "astralhp/components";
 const attributes = { inline: true, "data-plain": "yes" };
@@ -164,7 +169,7 @@ const attributes = { inline: true, "data-plain": "yes" };
 	};
 	check(fs.readFileSync(path.join(site.dist, "index.html"), "utf8"));
 	// Inline content must be part of the server build, not read from source per request.
-	fs.rmSync(path.join(site.path, "styles"), { recursive: true });
+	fs.rmSync(path.join(site.config.webroot, "styles"), { recursive: true });
 	const server = new AstralHPServer([site], { port: 0 });
 	await server.listen();
 	try {
@@ -178,7 +183,7 @@ const attributes = { inline: true, "data-plain": "yes" };
 
 test("CSS development refreshes inline plain CSS and SCSS dependencies", async t => {
 	const site = fixture(t);
-	const filename = path.join(site.path, ".components/Styles.astro");
+	const filename = path.join(site.config.webroot, ".components/Styles.astro");
 	fs.writeFileSync(filename, fs.readFileSync(filename, "utf8").replaceAll(" src=", " inline src="));
 	const reservation = net.createServer();
 	await new Promise(resolve => reservation.listen(0, "127.0.0.1", resolve));
@@ -190,8 +195,8 @@ test("CSS development refreshes inline plain CSS and SCSS dependencies", async t
 		const before = await (await fetch(url)).text();
 		assert.match(before, /color:#123456/);
 		assert.match(before, /margin: 0/);
-		fs.writeFileSync(path.join(site.path, "styles/plain.css"), "body { margin: 9px; }");
-		fs.writeFileSync(path.join(site.path, "styles/_tokens.scss"), "$color: #654321;");
+		fs.writeFileSync(path.join(site.config.webroot, "styles/plain.css"), "body { margin: 9px; }");
+		fs.writeFileSync(path.join(site.config.webroot, "styles/_tokens.scss"), "$color: #654321;");
 		let after = before;
 		const deadline = Date.now() + 15000;
 		while ((!after.includes("margin: 9px") || !after.includes("color:#654321")) && Date.now() < deadline) {
@@ -218,7 +223,7 @@ test("CSS development rebuilds SCSS when a forwarded partial changes", async t =
 		assert.equal(response.status, 200);
 		const before = stylesheetURL(await response.text());
 		assert.match(await (await fetch(`${base}${before}`)).text(), /color:#123456/);
-		fs.writeFileSync(path.join(site.path, "styles/_tokens.scss"), "$color: #654321;");
+		fs.writeFileSync(path.join(site.config.webroot, "styles/_tokens.scss"), "$color: #654321;");
 		let after = before;
 		const deadline = Date.now() + 15000;
 		while (after === before && Date.now() < deadline) {

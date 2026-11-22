@@ -38,11 +38,11 @@ test("discovers .htaccess webroots in descendants and ancestors without treating
 	fs.mkdirSync(path.join(project, "not-a-site/.htaccess"), { recursive: true });
 	fs.symlinkSync(project, path.join(project, "loop"));
 	const sites = await Webroot.requireAll(project);
-	assert.deepEqual(sites.map(site => site.path), ["first", "second"].map(name => path.join(project, name)));
+	assert.deepEqual(sites.map(site => site.config.webroot), ["first", "second"].map(name => path.join(project, name)));
 	for (const site of sites) {
-		assert.equal(site.adapter, "apache-static");
+		assert.equal(site.config.adapter, "apache-static");
 		assert.equal(site.configFile, null);
-		assert.equal(site.prerender, true);
+		assert.equal(site.config.prerender, true);
 	}
 	assert.deepEqual(await Webroot.requireOne(path.join(project, "first/private")), sites[0]);
 	assert.deepEqual(await Webroot.resolve("first", project), sites[0]);
@@ -61,7 +61,7 @@ test("workers resolve project directories from configs and package manifests", t
 	const sites = [site("sites/first/www"), site("sites/second/www")];
 	assert.equal(sites[0].projectDir, path.join(project, "sites/first"));
 	assert.equal(Webroot.workerDirectory(sites), project);
-	const configured = new Webroot({ webroot: sites[0].path }, path.join(project, "astralhp.mts"));
+	const configured = new Webroot({ webroot: sites[0].config.webroot }, path.join(project, "astralhp.mts"));
 	assert.equal(configured.projectDir, project);
 	fs.unlinkSync(path.join(project, "astralhp.mts"));
 	assert.equal(Webroot.workerDirectory(sites), path.join(project, "sites"));
@@ -79,10 +79,10 @@ test("a configured project uses its declared webroots even when other directorie
 		fs.writeFileSync(path.join(project, name, ".htaccess"), "");
 	}
 	const sites = await Webroot.requireAll(project);
-	assert.deepEqual(sites.map(site => [path.relative(project, site.path), site.adapter]), [
+	assert.deepEqual(sites.map(site => [path.relative(project, site.config.webroot), site.config.adapter]), [
 		["first", "apache-proxy"], ["second", "node"],
 	]);
-	assert.equal(sites[0].port, 9001);
+	assert.equal(sites[0].config.port, 9001);
 	assert.equal(sites[0].configFile, path.join(project, "astralhp.mts"));
 	assert.deepEqual(await Webroot.requireAll(path.join(project, "third")), sites);
 	assert.deepEqual(await Webroot.resolve(path.join(project, "first")), sites[0]);
@@ -128,18 +128,20 @@ test("expands paths and overrides, resolves selected webroots, and keeps stable 
 	for (const directory of ["first/www", "second/www"]) fs.mkdirSync(path.join(project, directory), { recursive: true });
 	const sites = await Webroot.search(project);
 	assert.equal(sites.length, 2);
-	assert.deepEqual(sites.map(site => site.prerender), [false, true]);
-	assert.deepEqual(sites.map(site => [site.path, site.adapter, site.port, site.runtimePath]), [
-		[path.join(project, "first/www"), "apache-proxy", 9001, process.execPath],
-		[path.join(project, "second/www"), "apache-cgi", 9002, process.execPath],
-	]);
+	assert.deepEqual(sites.map(site => site.config.prerender), [false, true]);
+	assert.deepEqual(
+		sites.map(site => [site.config.webroot, site.config.adapter, site.config.port, site.config.runtimePath]), [
+			[path.join(project, "first/www"), "apache-proxy", 9001, process.execPath],
+			[path.join(project, "second/www"), "apache-cgi", 9002, process.execPath],
+		],
+	);
 	assert.notEqual(sites[0].projectCaches, sites[1].projectCaches);
 	for (const site of sites) {
 		assert.equal(path.dirname(site.projectCaches), path.join(project, ".caches"));
 		assert.equal(site.astroCache, path.join(site.projectCaches, ".astro"));
 		assert.equal(site.viteCache, path.join(site.astroCache, "vite"));
-		assert.equal(site.dist, path.join(site.path, ".caches/dist"));
-		assert.deepEqual(await Webroot.resolve(site.path), site);
+		assert.equal(site.dist, path.join(site.config.webroot, ".caches/dist"));
+		assert.deepEqual(await Webroot.resolve(site.config.webroot), site);
 	}
 	await assert.rejects(Webroot.requireOne(project), /Found multiple AstralHP webroots/);
 	// A second config avoids module-import caching while using the same project directory.
@@ -149,7 +151,7 @@ test("expands paths and overrides, resolves selected webroots, and keeps stable 
 		'export const config = { webroot: ["./second/www", "first/../first/www", "third"] };',
 	);
 	const reordered = await Webroot.search(project);
-	assert.deepEqual(reordered.map(site => site.adapter), ["apache-static", "apache-static", "apache-static"]);
+	assert.deepEqual(reordered.map(site => site.config.adapter), ["apache-static", "apache-static", "apache-static"]);
 	assert.equal(reordered[0].projectCaches, sites[1].projectCaches);
 	assert.equal(reordered[1].projectCaches, sites[0].projectCaches);
 });
@@ -182,23 +184,23 @@ test("an existing HTML site can build and run before migrating its first page", 
 	fs.unlinkSync(path.join(root, "guide/index.html"));
 	fs.writeFileSync(path.join(root, "guide/index.astro"), "<h1>Migrated guide</h1>");
 	await build(site);
-	assert.match(fs.readFileSync(site.resolveDistFile("/guide/"), "utf8"), /Migrated guide/);
+	assert.match(fs.readFileSync(site.lookup("/guide/").filename, "utf8"), /Migrated guide/);
 	assert.equal(fs.readFileSync(path.join(root, "index.html"), "utf8"), home);
 });
 
 test("serves prerendered and live endpoints alongside browser scripts", async t => {
 	const project = fixture(t, { webroot: "www", adapter: "apache-proxy" });
 	const site = await Webroot.requireOne(project);
-	const api = path.join(site.path, "api");
+	const api = path.join(site.config.webroot, "api");
 	fs.mkdirSync(api, { recursive: true });
 	fs.writeFileSync(path.join(api, "status.astro.js"), 'export const GET = () => new Response("ready");');
-	fs.writeFileSync(path.join(site.path, "client.js"), "console.log('client');");
+	fs.writeFileSync(path.join(site.config.webroot, "client.js"), "console.log('client');");
 	const typescript = "export const version: number = 1;";
-	for (const ext of ["ts", "tsx"]) fs.writeFileSync(path.join(site.path, `client.${ext}`), typescript);
-	const script = path.join(site.path, "version.js.astro.js");
+	for (const ext of ["ts", "tsx"]) fs.writeFileSync(path.join(site.config.webroot, `client.${ext}`), typescript);
+	const script = path.join(site.config.webroot, "version.js.astro.js");
 	fs.writeFileSync(script, 'export const GET = () => new Response("v1");');
 	fs.writeFileSync(
-		path.join(site.path, "feed.json.astro.ts"), `
+		path.join(site.config.webroot, "feed.json.astro.ts"), `
 const version: number = 1;
 export function GET() { return Response.json({ version }); }
 `,
@@ -214,7 +216,7 @@ export async function POST({ params, request }) {
 	await build(site);
 	fs.writeFileSync(script, 'export const GET = () => new Response("v2");');
 	assert.equal(fs.readFileSync(path.join(site.dist, "api/status"), "utf8"), "ready");
-	const rules = fs.readFileSync(path.join(site.path, ".htaccess"), "utf8");
+	const rules = fs.readFileSync(path.join(site.config.webroot, ".htaccess"), "utf8");
 	assert.ok(rules.includes('RewriteRule "^api/[^/]+?/?$" "http://127.0.0.1:'));
 
 	const port = await freePort();
@@ -321,9 +323,9 @@ Write a paragraph with **emphasis**.
 	}
 	checkMdx(html(www, "posts/guide.html"), "article");
 	assert.match(html(www, "override.html"), /<aside data-title="Override">/);
-	assert.equal(docs.resolveDistFile("/posts"), null);
-	assert.equal(docs.resolveStaticFile("/posts/index.md"), null);
-	assert.equal(docs.resolveStaticFile("/posts/guide.mdx"), null);
+	assert.equal(docs.lookup("/posts").kind, "miss");
+	assert.equal(docs.lookup("/posts/index.md").kind, "miss");
+	assert.equal(docs.lookup("/posts/guide.mdx").kind, "miss");
 	const port = await freePort();
 	for (const launch of [dev, start]) {
 		const server = await launch(docs, { port });
@@ -350,8 +352,10 @@ test("opens external Markdown and MDX links in a new tab when enabled", async t 
 [Site](https://example.org) [Network](//example.org/docs)
 [Local](/docs) [Fragment](#main-rules) [Email](mailto:team@example.org)`;
 	for (const site of await Webroot.requireAll(project)) {
-		fs.mkdirSync(site.path);
-		for (const extension of ["md", "mdx"]) fs.writeFileSync(path.join(site.path, extension + "." + extension), source);
+		fs.mkdirSync(site.config.webroot);
+		for (const extension of ["md", "mdx"]) {
+			fs.writeFileSync(path.join(site.config.webroot, extension + "." + extension), source);
+		}
 		await build(site);
 		for (const file of ["md.html", "mdx.html"]) {
 			const html = fs.readFileSync(path.join(site.dist, file), "utf8");
@@ -361,7 +365,7 @@ test("opens external Markdown and MDX links in a new tab when enabled", async t 
 			) {
 				const link = html.match(/<a [^>]+>/g).find(tag => tag.includes(`href="${href}"`));
 				assert.ok(link, href);
-				const newTab = site.markdownAddTargetBlank && href.includes("//");
+				const newTab = site.config.markdownAddTargetBlank && href.includes("//");
 				assert.equal(link.includes('target="_blank"'), newTab);
 				assert.equal(link.includes('rel="noopener"'), newTab);
 			}
@@ -420,7 +424,8 @@ test("CLI lists and builds array entries, then serves both through a shared prox
 		assert(fs.statSync(path.join(site.astroCache, "types.d.ts")).isFile());
 		assert(fs.statSync(path.join(site.dist, ".server/app.mjs")).isFile());
 		assert.match(
-			fs.readFileSync(path.join(site.dist, "index.html"), "utf8"), new RegExp(`${path.basename(site.path)} static`),
+			fs.readFileSync(path.join(site.dist, "index.html"), "utf8"),
+			new RegExp(`${path.basename(site.config.webroot)} static`),
 		);
 	}
 	const port = await freePort();
@@ -428,10 +433,12 @@ test("CLI lists and builds array entries, then serves both through a shared prox
 	try {
 		for (const site of sites) {
 			const response = await fetch(`http://127.0.0.1:${port}/live`, {
-				headers: { "X-AstralHP-Document-Root": site.path },
+				headers: { "X-AstralHP-Document-Root": site.config.webroot },
 			});
 			assert.equal(response.status, 200);
-			assert((await response.text()).includes(`${path.basename(site.path)} dynamic ${fs.realpathSync(project)}`));
+			assert(
+				(await response.text()).includes(`${path.basename(site.config.webroot)} dynamic ${fs.realpathSync(project)}`),
+			);
 		}
 	} finally {
 		await worker.close();
@@ -449,12 +456,12 @@ test("selected webroots can run concurrent dev servers with separate Astro and V
 	try {
 		for (const site of sites) {
 			const port = await freePort();
-			workers.push({ worker: await dev(await Webroot.resolve(site.path), { port }), port, site });
+			workers.push({ worker: await dev(await Webroot.resolve(site.config.webroot), { port }), port, site });
 		}
 		for (const { port, site } of workers) {
 			const response = await fetch(`http://localhost:${port}/`);
 			assert.equal(response.status, 200);
-			assert.match(await response.text(), new RegExp(`${path.basename(site.path)} development`));
+			assert.match(await response.text(), new RegExp(`${path.basename(site.config.webroot)} development`));
 			assert(fs.statSync(path.join(site.astroCache, "types.d.ts")).isFile());
 			assert(fs.statSync(site.viteCache).isDirectory());
 		}

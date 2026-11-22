@@ -1,15 +1,12 @@
-import { createHash } from "node:crypto";
 import fs from "node:fs";
+import { contentHash } from "./utils.js";
 import type { Webroot } from "./webroot.js";
 
-export function contentHash(contents: string | Uint8Array): string {
-	return createHash("sha256").update(contents).digest("hex").slice(0, 16);
-}
-
 function cachebustFile(
+	webroot: Webroot,
 	source: string,
 	base: URL,
-	resolveFile: (requestUrl: string) => string | null,
+	dist: boolean,
 ): string {
 	if (
 		!source || source.startsWith("//") || source.includes("\\") ||
@@ -26,22 +23,18 @@ function cachebustFile(
 		throw new Error(`Cachebusted assets must use a relative or root-relative URL: ${source}`);
 	}
 
-	const filename = resolveFile(resolved.pathname);
-	if (!filename) {
+	const lookup = webroot.lookup(resolved, { dist });
+	if (lookup.kind !== "file") {
 		throw new Error(`Cachebusted asset does not exist in the webroot: ${source}`);
 	}
 
-	return `${source}?v=${contentHash(fs.readFileSync(filename))}`;
+	return `${source}?v=${contentHash(fs.readFileSync(lookup.filename))}`;
 }
 
 export function cachebust(webroot: Webroot, source: string, base: URL): string {
-	return cachebustFile(source, base, requestUrl => webroot.resolveStaticFile(requestUrl));
+	return cachebustFile(webroot, source, base, false);
 }
 
-export function cachebustScript(webroot: Webroot, source: string, base: URL): string {
-	return cachebustFile(
-		source.replace(/\.tsx?$/i, ".js"),
-		base,
-		requestUrl => webroot.resolveDistFile(requestUrl) ?? webroot.resolveStaticFile(requestUrl),
-	);
+export function cachebustES3Script(webroot: Webroot, source: string, base: URL): string {
+	return cachebustFile(webroot, source.replace(/\.tsx?$/i, ".js"), base, true);
 }

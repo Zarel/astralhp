@@ -40,7 +40,7 @@ async function main(argv: string[]) {
 		}
 		console.log("AstralHP webroots:");
 		for (const webroot of webroots) {
-			const webrootPath = path.relative(process.cwd(), webroot.path) || ".";
+			const webrootPath = path.relative(process.cwd(), webroot.config.webroot) || ".";
 			console.log("  " + webrootPath);
 		}
 		return;
