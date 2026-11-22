@@ -24,6 +24,9 @@ export function staticFiles(webroot: Webroot, endpoints: readonly RegExp[] = [])
 			server.middlewares.use((request, response, next) => {
 				const url = request.url ? URL.parse(request.url, "http://astralhp.local") : null;
 				const pathname = url?.pathname ?? "";
+				// Vite injects paths containing `node_modules` for its dev server dependencies.
+				// We usually block them, so this bypasses that block.
+				if (pathname.startsWith("/@fs/")) return next();
 				// A prerendered endpoint can be stale. Let Astro run its current handler.
 				const dist = isCompiledAssetRequest(pathname) && !endpoints.some(route => route.test(pathname));
 				const lookup = webroot.lookup(url ?? undefined, { dist });

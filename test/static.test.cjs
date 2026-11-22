@@ -168,6 +168,41 @@ test("Node serves the prerendered root endpoint as an extensionless static file"
 	}
 });
 
+test("dev serves the Vite client imports and Astro's injected component modules", async t => {
+	const site = new Webroot({ webroot: fixture(t).config.webroot, serveSourceFiles: false });
+	fs.mkdirSync(path.join(site.config.webroot, "node_modules"));
+	fs.writeFileSync(path.join(site.config.webroot, "node_modules/unimported.js"), "");
+	fs.writeFileSync(
+		path.join(site.config.webroot, "index.astro"), `---
+import { ClientRouter } from "astro:transitions";
+---
+<html><head><ClientRouter /></head><body>Dev</body></html>`,
+	);
+	const reservation = net.createServer();
+	await new Promise(resolve => reservation.listen(0, "localhost", resolve));
+	const port = reservation.address().port;
+	await new Promise(resolve => reservation.close(resolve));
+	const worker = await dev(site, { port });
+	t.after(() => worker.close());
+	const base = `http://localhost:${port}`;
+	const html = await (await fetch(base)).text();
+	const scripts = Array.from(html.matchAll(/<script[^>]+src="([^"]+)"/g), match => match[1].replaceAll("&amp;", "&"));
+	assert(scripts.includes("/@vite/client"));
+	assert(scripts.some(src => src.includes("ClientRouter.astro?astro&type=script")));
+	assert(scripts.some(src => src.includes("ClientRouter.astro?astro&type=style")));
+	const pending = new Set(scripts.map(src => new URL(src, base).href));
+	for (const src of pending) {
+		const response = await fetch(src);
+		assert.equal(response.status, 200, src);
+		assert.match(response.headers.get("content-type"), /javascript/, src);
+		const code = await response.text();
+		for (const [, dependency] of code.matchAll(/(?:\bimport\s*|\bfrom\s*)["']((?:\/|\.\.?\/)[^"']+)["']/g)) {
+			pending.add(new URL(dependency, src).href);
+		}
+	}
+	assert.equal((await fetch(base + "/node_modules/unimported.js")).status, 404);
+});
+
 test("apache-static supports local dev and rejects dynamic pages at startup", async t => {
 	const site = fixture(t);
 	fs.writeFileSync(path.join(site.config.webroot, "index.astro"), "Static development");
