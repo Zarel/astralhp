@@ -13,6 +13,7 @@ import { cgiAdapter } from "./cgi-adapter.js";
 import { type DevServerOptions, startDev } from "./dev-server.js";
 import { es3Plugin } from "./es3.js";
 import { type LiveServerOptions, serverPort, startLive } from "./live-server.js";
+import { sourcePathsPlugin } from "./source-paths.js";
 import {
 	type AstralHPConfigOptions,
 	astralhpIntegration,
@@ -194,6 +195,7 @@ function astroConfig(
 				bundles.plugin(legacySources),
 				es3Plugin(webroot, legacySources, legacyCache),
 				outsideRootEntrypoints(webroot, pages),
+				sourcePathsPlugin(webroot),
 			],
 		},
 	};

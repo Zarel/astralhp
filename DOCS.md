@@ -156,7 +156,9 @@ If you do care about targeting ancient browsers, keep in mind:
   async/await
 - We don't polyfill Map/Set because we have no use for them, either
 
-# Cache directories
+# Advanced
+
+## Cache directories
 
 The build writes generated Astro files to `example/.caches/dist/`. The live
 server serves those generated files alongside static files read directly from
@@ -193,3 +195,10 @@ directories. With multiple webroots, `.astro` will be in
 `.caches/[webroot]/.astro`.
 
 You probably want to add `.caches/` to your `.gitignore`.
+
+## `import.meta.dirname`
+
+Normally, Vite's bundle process doesn't touch `import.meta.dirname` and
+`import.meta.filename`, which changes them be the path of the bundle. AstralHP
+rewrites it to be the location of the original file it was written in, which
+may involve `..` directories.

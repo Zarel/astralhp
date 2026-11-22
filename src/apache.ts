@@ -73,9 +73,6 @@ function proxyRules(port: number, routes: readonly ApacheRoute[]): string {
 	return `# Identify this Apache webroot to the shared AstralHP server
 RequestHeader set X-AstralHP-Document-Root "expr=%{DOCUMENT_ROOT}"
 
-# Preserve the public hostname for Astro
-ProxyPreserveHost On
-
 # Proxy dynamic AstralHP routes
 ${rules.join("\n")}`;
 }

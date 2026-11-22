@@ -803,7 +803,7 @@ test("generates Apache rules in built, static, proxy order", () => {
 		block,
 		/^RequestHeader set X-AstralHP-Document-Root "expr=%\{DOCUMENT_ROOT\}"$/m,
 	);
-	assert.match(block, /^ProxyPreserveHost On$/m);
+	assert.doesNotMatch(block, /ProxyPreserveHost/);
 	assert(physical > 0);
 	assert(built > 0);
 	assert(physical > built);
