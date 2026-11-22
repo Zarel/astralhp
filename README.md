@@ -187,8 +187,6 @@ The host needs to support:
 
 ## To-do
 
-- Includes. Block `.inc.ts` and `.inc.astro` files, and document that includes
-  should ideally be outside the webroot
 - Fix `Astro.url` - important for Astro's CSRF protection
 - User Astro config
 - Improve the process manager

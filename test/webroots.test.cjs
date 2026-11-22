@@ -188,6 +188,67 @@ test("an existing HTML site can build and run before migrating its first page", 
 	assert.equal(fs.readFileSync(path.join(root, "index.html"), "utf8"), home);
 });
 
+test("server-side includes can be imported without publishing a file or route", async t => {
+	const project = fs.realpathSync(fixture(t, { webroot: "www", adapter: "apache-proxy" }));
+	const site = await Webroot.requireOne(project);
+	const root = site.config.webroot;
+	fs.mkdirSync(path.join(root, "parts"), { recursive: true });
+	fs.writeFileSync(path.join(root, "parts/name.inc.js"), 'export const name = "reader";');
+	fs.writeFileSync(
+		path.join(root, "parts/message.inc.ts"), `import { name } from "./name.inc.js";
+export const message: string = "Hello " + name;`,
+	);
+	fs.writeFileSync(
+		path.join(root, "parts/Card.inc.astro"), `---
+import { message } from "./message.inc.ts";
+---
+<p>{message}</p>
+<style>p { color: tomato }</style>`,
+	);
+	fs.writeFileSync(
+		path.join(root, "index.astro"), `---
+import Card from "./parts/Card.inc.astro";
+---
+<html><head></head><body><Card /></body></html>`,
+	);
+
+	assert.deepEqual(site.scanPages().map(page => page.pattern), ["/"]);
+	await build(site);
+	const files = ["parts/Card.inc.astro", "parts/name.inc.js", "parts/message.inc.ts"];
+	const rules = fs.readFileSync(path.join(root, ".htaccess"), "utf8").split("# Serve built files")[0];
+	const denied = Array.from(
+		rules.matchAll(/^RewriteRule "([^"]+)" "-" \[R=404,END,NC\]$/gm), m => new RegExp(m[1], "i"),
+	);
+	for (const file of files) assert(denied.some(pattern => pattern.test(file)), file);
+
+	const port = await freePort();
+	const base = `http://localhost:${port}`;
+	for (const launch of [dev, start]) {
+		const worker = await launch(site, { port });
+		try {
+			const html = await (await fetch(base)).text();
+			assert.match(html, /Hello reader/);
+			assert.equal((await fetch(base + "/parts/Card.inc")).status, 404);
+			for (const file of files) {
+				const urls = ["/" + file, "/" + file + "?raw"];
+				if (launch === dev) {
+					const fsUrl = "/@fs" + path.join(root, file);
+					urls.push(fsUrl, fsUrl + "?raw");
+				}
+				for (const url of urls) assert([403, 404].includes((await fetch(base + url)).status), url);
+			}
+			if (launch === dev) {
+				const style = html.match(/src="([^"]+Card\.inc\.astro\?[^"]*type=style[^"]*)"/)?.[1];
+				assert(style, html);
+				const response = await fetch(new URL(style.replaceAll("&amp;", "&"), base));
+				assert.match(await response.text(), /tomato/);
+			}
+		} finally {
+			await worker.close();
+		}
+	}
+});
+
 test("serves prerendered and live endpoints alongside browser scripts", async t => {
 	const project = fixture(t, { webroot: "www", adapter: "apache-proxy" });
 	const site = await Webroot.requireOne(project);

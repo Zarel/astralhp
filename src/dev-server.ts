@@ -27,6 +27,8 @@ export function staticFiles(webroot: Webroot, endpoints: readonly RegExp[] = [])
 				// Vite injects paths containing `node_modules` for its dev server dependencies.
 				// We usually block them, so this bypasses that block.
 				if (pathname.startsWith("/@fs/")) return next();
+				// Astro loads the component's compiled scripts and styles as virtual modules.
+				if (pathname.endsWith(".inc.astro") && url?.searchParams.has("astro")) return next();
 				// A prerendered endpoint can be stale. Let Astro run its current handler.
 				const dist = isCompiledAssetRequest(pathname) && !endpoints.some(route => route.test(pathname));
 				const lookup = webroot.lookup(url ?? undefined, { dist });

@@ -111,6 +111,21 @@ The `.astro.ts`/`.astro.js` part will be cut off of the served URL.
 - `foo.astro.ts` -> `http://example.com/foo`
 - `bar.json.astro.ts` -> `http://example.com/bar.json`
 
+## `.inc.astro`, `.inc.ts`, and `.inc.js` includes
+
+You might want to use `.astro` and `.ts` for files that are only imported,
+by other files, and not as actual publicly-accessible routes.
+
+As a first resort, we recommend having an `includes` directory outside
+your webroot.
+
+As a second resort, we recommend having a `.includes` directory inside
+your webroot.
+
+As a last resort, add `.inc` so they're not treated as routes. Files ending
+in `.inc.astro`, `.inc.ts`, and `.inc.js` can still be imported by endpoints
+and `.astro` and `.mdx` files, but won't be published as routes.
+
 ## `.php`
 
 PHP files do not get any special handling from AstralHP; a Node server will

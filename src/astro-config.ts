@@ -9,6 +9,7 @@ import { type AstralHPConfigOptions, astralhpIntegration } from "./astro-integra
 import { AssetBundles } from "./bundles.js";
 import { cgiAdapter } from "./cgi-adapter.js";
 import { ES3Scripts } from "./es3.js";
+import { includeSuffixes } from "./request-policy.js";
 import { sourcePathsPlugin } from "./source-paths.js";
 import { relativePosixPath } from "./utils.js";
 import type { AstralHPPage, Webroot } from "./webroot.js";
@@ -136,6 +137,13 @@ export function astroConfig(
 			root: config.webroot,
 			cacheDir: webroot.viteCache,
 			server: {
+				fs: {
+					// Vite replaces its default deny list. Keep those entries when adding includes.
+					deny: [
+						".env", ".env.*", "*.{crt,pem,key,p12,pfx,cer,der}", ".npmrc", ".yarnrc.yml", "**/.git/**",
+						...includeSuffixes.map(suffix => "*" + suffix),
+					],
+				},
 				watch: {
 					ignored: ["**/.caches/**"],
 				},

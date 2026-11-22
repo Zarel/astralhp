@@ -126,10 +126,9 @@ export class Webroot {
 					if (!requestPolicy.privatePath.test(entry.name)) scan(filename);
 					continue;
 				}
+				if (!entry.isFile() || requestPolicy.includeSource.test(entry.name)) continue;
 				const extension = requestPolicy.routeSuffixes.find(suffix => entry.name.endsWith(suffix));
-				if (!entry.isFile() || !extension || filename === this.config.markdownLayout) {
-					continue;
-				}
+				if (!extension || filename === this.config.markdownLayout) continue;
 
 				const relative = path.relative(this.config.webroot, filename);
 				const segments = relative.split(path.sep);
