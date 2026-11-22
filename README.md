@@ -185,6 +185,16 @@ The host needs to support:
 
 `runtimePath` must not contain whitespace.
 
+## To-do
+
+- Includes. Block `.inc.ts` and `.inc.astro` files, and document that includes
+  should ideally be outside the webroot
+- Consolidate code for static serving blacklists
+- Fix `Astro.url` - important for Astro's CSRF protection
+- User Astro config
+- Improve the process manager
+- Dev/prod separate output dirs
+
 ## Developing AstralHP
 
 Run `npm run build` to compile AstralHP and check its Astro components. Run

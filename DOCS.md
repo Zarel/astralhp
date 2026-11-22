@@ -123,39 +123,6 @@ time.
 
 See [`src/config.d.ts`](src/config.d.ts) for config documentation.
 
-# ES3 and Babel
-
-AstralHP supports compiling all the way down to ES3, for ancient browsers.
-This approach uses Babel and compiles `import` and `export` to no-ops,
-making everything a global.
-
-When doing this, use `<ES3 src="script.tsx" />` for each module you use,
-dependencies first. Unlike `<JS>`, there will be no bundling. We'll
-scan for `<ES3>` and compile each source file to a `.js` file.
-
-```text
-example/
-  script.tsx
-example/.caches/dist/
-  script.js
-  script.js.map
-```
-
-This Babel configuration is designed to target ancient browsers while
-still letting you write code that looks modern. If you don't care about
-targeting ancient browsers, you're probably better off using `<JS>`
-instead.
-
-If you do care about targeting ancient browsers, keep in mind:
-
-- We use Babel in loose mode, so make sure your code follows best practices
-- We assume that all `for...of` is on arrays
-- We assume that you only ever use `for...in` on bare objects, not arrays
-  or primitives
-- You can't use anything that doesn't compile down to ES3, such as
-  async/await
-- We don't polyfill Map/Set because we have no use for them, either
-
 # Advanced
 
 ## Cache directories
@@ -195,6 +162,39 @@ directories. With multiple webroots, `.astro` will be in
 `.caches/[webroot]/.astro`.
 
 You probably want to add `.caches/` to your `.gitignore`.
+
+## ES3 and Babel
+
+AstralHP supports compiling all the way down to ES3, for ancient browsers.
+This approach uses Babel and compiles `import` and `export` to no-ops,
+making everything a global.
+
+When doing this, use `<ES3 src="script.tsx" />` for each module you use,
+dependencies first. Unlike `<JS>`, there will be no bundling. We'll
+scan for `<ES3>` and compile each source file to a `.js` file.
+
+```text
+example/
+  script.tsx
+example/.caches/dist/
+  script.js
+  script.js.map
+```
+
+This Babel configuration is designed to target ancient browsers while
+still letting you write code that looks modern. If you don't care about
+targeting ancient browsers, you're probably better off using `<JS>`
+instead.
+
+If you do care about targeting ancient browsers, keep in mind:
+
+- We use Babel in loose mode, so make sure your code follows best practices
+- We assume that all `for...of` is on arrays
+- We assume that you only ever use `for...in` on bare objects, not arrays
+  or primitives
+- You can't use anything that doesn't compile down to ES3, such as
+  async/await
+- We don't polyfill Map/Set because we have no use for them, either
 
 ## `import.meta.dirname`
 
