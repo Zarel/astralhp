@@ -1,6 +1,6 @@
 {
 	"name": "astralhp",
-	"version": "0.0.1",
+	"version": "0.0.2",
 	"description": "Astro with PHP-style routing",
 	"homepage": "https://github.com/Zarel/astralhp",
 	"repository": {
