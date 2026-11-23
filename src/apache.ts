@@ -61,15 +61,15 @@ function proxyRules(port: number, routes: readonly ApacheRoute[]): string {
 	).values()].sort((a, b) => a.pattern.localeCompare(b.pattern));
 	const rules = patterns.map(route => {
 		const regex = route.regex.replace(/"/g, '\\"');
-		return `RewriteRule "${regex}" "http://127.0.0.1:${port}%{REQUEST_URI}" [P,END,NE]`;
+		return `RewriteRule "${regex}" "http://127.0.0.1:${port}%{REQUEST_URI}" [E=ASTRALHP_PROXY:1,P,END,NE]`;
 	});
 	return `# Identify this Apache webroot to the shared AstralHP server
-RequestHeader set X-AstralHP-Document-Root "expr=%{DOCUMENT_ROOT}"
+RequestHeader set X-AstralHP-Document-Root "expr=%{DOCUMENT_ROOT}" env=ASTRALHP_PROXY
 
 # mod_proxy_http supplies the client address and original Host after mod_headers runs.
-RequestHeader unset X-Forwarded-For
-RequestHeader unset X-Forwarded-Host
-RequestHeader set X-Forwarded-Proto "expr=%{REQUEST_SCHEME}"
+RequestHeader unset X-Forwarded-For env=ASTRALHP_PROXY
+RequestHeader unset X-Forwarded-Host env=ASTRALHP_PROXY
+RequestHeader set X-Forwarded-Proto "expr=%{REQUEST_SCHEME}" env=ASTRALHP_PROXY
 
 # Proxy dynamic AstralHP routes
 ${rules.join("\n")}`;
