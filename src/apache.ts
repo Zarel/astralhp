@@ -121,7 +121,7 @@ export function apacheBlock(
 RewriteEngine On
 
 <FilesMatch "(?i)\\.md$">
-    ForceType text/markdown
+    ForceType "text/markdown; charset=utf-8"
 </FilesMatch>
 
 # Don't serve private paths or component, endpoint, and include sources
