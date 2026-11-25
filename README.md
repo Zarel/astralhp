@@ -120,11 +120,12 @@ Your Apache setup requires:
 - `mod_rewrite`
 - `.htaccess` support (`FileInfo` overrides)
 - The webroot to be the Apache `DocumentRoot`
-- If using `apache-proxy`: `mod_proxy`, `mod_proxy_http`, and `mod_headers`.
+- If using `apache-proxy`: `mod_proxy`, `mod_proxy_http`, `mod_headers`, `DirectoryCheckHandler` in `.htaccess`
 - either `FollowSymLinks` or `SymLinksIfOwnerMatch`
 
 (These are all default settings except `.htaccess` support, which is usually
-enabled by shared hosts.)
+enabled by shared hosts. Long-running processes are frequently banned by
+shared hosts, which is why we support `apache-cgi` as an alternative.)
 
 ### `.htaccess`
 
