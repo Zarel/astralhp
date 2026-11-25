@@ -9,6 +9,7 @@ import { apacheAdapter } from "./apache-adapter.js";
 import { type AstralHPConfigOptions, astralhpIntegration } from "./astro-integration.js";
 import { AssetBundles } from "./bundles.js";
 import { ES3Scripts } from "./es3.js";
+import { nativeAssetsPlugin } from "./native-assets.js";
 import { includeSuffixes } from "./request-policy.js";
 import { sourcePathsPlugin } from "./source-paths.js";
 import { relativePosixPath } from "./utils.js";
@@ -152,6 +153,7 @@ export function astroConfig(
 				"import.meta.env.ASTRALHP_WEBROOT": JSON.stringify(config.webroot),
 			},
 			plugins: [
+				nativeAssetsPlugin(webroot),
 				bundles.plugin(),
 				es3.plugin(),
 				outsideRootEntrypoints(webroot, pages),

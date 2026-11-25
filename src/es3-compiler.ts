@@ -99,6 +99,16 @@ export function writeCompiledES3Script(
 	fs.chmodSync(output, fs.statSync(source).mode);
 }
 
+export async function compileES3Body(code: string, filename: string): Promise<string> {
+	const result = await babel.transformAsync(code, {
+		...ES3_BABEL_OPTIONS,
+		cwd: ASTRALHP_ROOT,
+		filename: filename + ".tsx",
+		sourceMaps: false,
+	});
+	return result?.code ?? "";
+}
+
 export async function prepareES3Script(
 	webroot: Webroot,
 	source: string,

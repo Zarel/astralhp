@@ -71,6 +71,52 @@ function bundleURL(html, name = "app") {
 	return match[1];
 }
 
+test("bare scripts use Astro and min scripts render at each component instance", async t => {
+	const site = fixture(t);
+	const root = site.config.webroot;
+	fs.writeFileSync(path.join(root, "scripts/legacy.ts"), "const legacy: number = 2;");
+	fs.writeFileSync(
+		path.join(root, ".components/Native.astro"), `
+<p>Pokémon</p>
+<script min data-test="body">
+	import { message } from "../scripts/dependency.js";
+	const obj: { value: string } = { value: message };
+	window.message = obj.value;
+</script>
+<script min src="../scripts/plain.js"></script>
+<script raw>const raw = () => ({ raw: true });</script>
+<script raw src="/scripts/plain.js"></script>
+<script ES3 data-test="legacy">const legacy = (x: number) => x + 1;</script>
+<script es3 src="../scripts/legacy.ts"></script>
+<script type="application/json">{"value": 1}</script>
+<script is:inline src="/ordinary.js"></script>
+<script>window.astroScript = true;</script>`,
+	);
+	fs.writeFileSync(
+		path.join(root, "index.astro"), `---
+import Native from "./.components/Native.astro";
+---
+<Native /><Native />`,
+	);
+	await build(site);
+	const html = fs.readFileSync(path.join(site.dist, "index.html"), "utf8");
+	const bodies = [...html.matchAll(/<script([^>]*data-test="body"[^>]*)>([^<]*)<\/script>/g)];
+	assert.equal(bodies.length, 2);
+	for (const [, attributes, code] of bodies) {
+		assert.match(attributes, /type="module"/);
+		assert.match(code, /dependency-one/);
+	}
+	assert(bundleURL(html, "plain"));
+	assert.match(html, /<script src="\/scripts\/plain\.js"><\/script>/);
+	assert.match(html, /<script>const raw = \(\) => \(\{ raw: true \}\);<\/script>/);
+	assert.match(html, /<script data-test="legacy">[^<]*function/);
+	assert.match(html, /src="\/scripts\/legacy\.js\?v=[\da-f]+"/);
+	assert.match(html, /<script type="application\/json">\{"value": 1\}<\/script>/);
+	assert.match(html, /<script src="\/ordinary\.js"><\/script>/);
+	const astro = html.match(/<script type="module"[^>]*>([^<]*)<\/script>/g) ?? [];
+	assert.equal(astro.filter(tag => tag.includes("astroScript") || tag.includes("/_astro/")).length, 1, html);
+});
+
 test("JS bundles use stable paths, include dependencies and CSS, and render on static and dynamic pages", async t => {
 	const site = fixture(t);
 	await build(site);
@@ -264,8 +310,10 @@ export const prerender = false;
 
 test("JS development serves sources and minified bundles and rebuilds imported dependencies", async t => {
 	const site = fixture(t);
+	const component = path.join(site.config.webroot, ".components/Assets.astro");
 	fs.appendFileSync(
-		path.join(site.config.webroot, ".components/Assets.astro"), '\n<Script src="../scripts/app.ts" inline />',
+		component,
+		'\n<Script src="../scripts/app.ts" inline /><script min>import { message } from "../scripts/dependency.js"; window.native = "native:" + message;</script>',
 	);
 	await build(site);
 	const productionFile = path.join(site.dist, "scripts/app.min.js");
@@ -284,6 +332,7 @@ test("JS development serves sources and minified bundles and rebuilds imported d
 		assert.equal(response.status, 200);
 		const initial = await response.text();
 		assert.match(initial, /dependency-one/);
+		assert.match(initial, /<script type="module">[^<]*native:[^<]*dependency-one/);
 		const before = bundleURL(initial);
 		const home = await (await fetch(base)).text();
 		assert.match(await (await fetch(base + bundleURL(home, "plain"))).text(), /dependency-one/);
@@ -297,7 +346,15 @@ test("JS development serves sources and minified bundles and rebuilds imported d
 			after = bundleURL(await (await fetch(`${base}/live`)).text());
 		}
 		assert.notEqual(after, before);
-		assert.match(await (await fetch(`${base}/live`)).text(), /dev-updated/);
+		assert.match(await (await fetch(`${base}/live`)).text(), /<script type="module">[^<]*native:[^<]*dev-updated/);
+		fs.writeFileSync(component, fs.readFileSync(component, "utf8").replace("native:", "edited:"));
+		let edited;
+		const editDeadline = Date.now() + 15000;
+		do {
+			await new Promise(resolve => setTimeout(resolve, 100));
+			edited = await (await fetch(`${base}/live`)).text();
+		} while (!edited.includes("edited:") && Date.now() < editDeadline);
+		assert.match(edited, /<script type="module">[^<]*edited:[^<]*dev-updated/);
 		assert.match(await (await fetch(`${base}${after}`)).text(), /dev-updated/);
 		assert.deepEqual(fs.readFileSync(productionFile), productionBundle);
 		assert(!fs.existsSync(path.join(devDist, "scripts/unused.min.js")));

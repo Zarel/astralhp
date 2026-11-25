@@ -76,13 +76,17 @@ and `status`.
 
 ## `.astro` files
 
-AstralHP uses [the same `.astro` files as Astro](https://docs.astro.build/en/basics/astro-pages/#astro-pages).
+AstralHP uses
+[the same `.astro` files as Astro](https://docs.astro.build/en/basics/astro-pages/#astro-pages),
+with two main differences:
 
-The main difference is that AstralHP doesn't enforce the directory layout Astro
-does; instead, it uses file extensions to distinguish between `src/pages/` and
-`public/`.
+- AstralHP doesn't enforce the directory layout Astro does; instead, it uses
+  file extensions to distinguish between `src/pages/` and `public/`.
 
-For more file types and what AstralHP does with them, see [DOCS.md](DOCS.md)
+- Bare `<script>` tags use Astro’s usual processing. AstralHP adds
+  `<script min>` for minified bundles and `<style src>` for local stylesheets.
+
+For details, see [DOCS.md](DOCS.md).
 
 ## Configuration
 

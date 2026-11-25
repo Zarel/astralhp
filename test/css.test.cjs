@@ -119,6 +119,32 @@ test("CSS keeps plain files intact and compiles SCSS for prerendered and dynamic
 	}
 });
 
+test("native style sources render the same CSS as the component", async t => {
+	const site = fixture(t);
+	const root = site.config.webroot;
+	fs.writeFileSync(
+		path.join(root, "index.astro"), `---
+import { CSS } from "astralhp/components";
+---
+<div id="component">
+<CSS src="/styles/main.scss" media="print" />
+<CSS src="styles/plain.css" inline />
+</div>
+<div id="native">
+<style src="/styles/main.scss" media="print"></style>
+<style src="styles/plain.css" inline></style>
+</div>
+<style is:inline>.ordinary { color: blue; }</style>`,
+	);
+	await build(site);
+	const html = fs.readFileSync(path.join(site.dist, "index.html"), "utf8");
+	const contents = id => html.match(new RegExp('<div id="' + id + '">([\\s\\S]*?)</div>'))[1];
+	assert.equal(contents("native"), contents("component"));
+	assert(stylesheetURL(contents("native")));
+	assert.match(contents("native"), /<style>\/\* keep this \*\/ body \{ margin: 0; \}/);
+	assert.match(html, /<style>\.ordinary \{ color: blue; \}<\/style>/);
+});
+
 test("CSS rejects two sources that would use the same compiled stylesheet URL", async t => {
 	const site = fixture(t);
 	fs.writeFileSync(path.join(site.config.webroot, "styles/main.css"), "body { color: red; }");
@@ -184,7 +210,10 @@ const attributes = { inline: true, "data-plain": "yes" };
 test("CSS development refreshes inline plain CSS and SCSS dependencies", async t => {
 	const site = fixture(t);
 	const filename = path.join(site.config.webroot, ".components/Styles.astro");
-	fs.writeFileSync(filename, fs.readFileSync(filename, "utf8").replaceAll(" src=", " inline src="));
+	fs.writeFileSync(
+		filename, `<style inline src="../styles/main.scss"></style>
+<style inline src="../styles/plain.css"></style>`,
+	);
 	const reservation = net.createServer();
 	await new Promise(resolve => reservation.listen(0, "127.0.0.1", resolve));
 	const port = reservation.address().port;

@@ -32,6 +32,10 @@ export function inlineCSS(code: string, pathname: string): string {
 	return output.toString().replace(/<\/style/gi, match => "\\3c " + match.slice(1));
 }
 
+export function escapeScriptText(code: string): string {
+	return code.replace(/<(?=\/script|script|!--)/gi, "\\u003c");
+}
+
 export function inlineJS(code: string, pathname: string): string {
 	const output = new MagicString(code);
 	const ast = parseSync(code, { babelrc: false, configFile: false, sourceType: "module" });
@@ -76,5 +80,5 @@ export function inlineJS(code: string, pathname: string): string {
 		if (/^[#@]\s*sourceMappingURL=/.test(comment.value.trim())) output.remove(comment.start!, comment.end!);
 	}
 	// HTML parses raw script text before JavaScript strings, comments, or regexps.
-	return output.toString().replace(/<(?=\/script|script|!--)/gi, "\\u003c");
+	return escapeScriptText(output.toString());
 }

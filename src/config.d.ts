@@ -1,5 +1,21 @@
 export type Adapter = "node" | "apache-proxy" | "apache-cgi" | "apache-static";
 
+declare global {
+	namespace astroHTML.JSX {
+		interface StyleHTMLAttributes {
+			src?: string;
+			inline?: boolean;
+		}
+		interface ScriptHTMLAttributes {
+			min?: boolean;
+			raw?: boolean;
+			es3?: boolean;
+			ES3?: boolean;
+			inline?: boolean;
+		}
+	}
+}
+
 export interface WebrootConfig {
 	/**
 	 * Which directory to use as AstralHP's webroot, relative to the config

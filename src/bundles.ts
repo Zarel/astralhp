@@ -29,6 +29,7 @@ export class AssetBundles {
 	private readonly webroot: Webroot;
 	private readonly es3: ES3Scripts;
 	private readonly bundles = new Map<string, Promise<Bundle>>();
+	private readonly bodies = new Map<string, string>();
 	private readonly owners = new Map<string, string>();
 
 	constructor(webroot: Webroot, es3: ES3Scripts) {
@@ -48,11 +49,22 @@ export class AssetBundles {
 		return pending;
 	}
 
+	private forgetRemovedBodies(filename: string, current = new Set<string>()): void {
+		for (const source of this.bodies.keys()) {
+			if (!source.startsWith(filename + ".script-") || current.has(source)) continue;
+			this.bodies.delete(source);
+			this.bundles.delete(source);
+		}
+	}
+
 	private async compile(source: string): Promise<Bundle> {
 		const scss = source.endsWith(".scss");
-		const entry = path.relative(this.webroot.config.webroot, source)
-			.replace(/\.scss$/, ".css")
-			.replace(/\.(?:[cm]?js|jsx|tsx?)$/, ".min.js");
+		const body = this.bodies.get(source);
+		const entry = body !== undefined ?
+			`_scripts/${contentHash(path.relative(this.webroot.projectDir, source))}.min.js` :
+			path.relative(this.webroot.config.webroot, source)
+				.replace(/\.scss$/, ".css")
+				.replace(/\.(?:[cm]?js|jsx|tsx?)$/, ".min.js");
 		const owner = this.owners.get(entry);
 		if (owner && owner !== source) {
 			throw new Error(`Asset output collision: ${owner} and ${source} both produce ${entry}`);
@@ -70,7 +82,7 @@ export class AssetBundles {
 		}
 		if (scss) return this.compileScss(source, entry);
 		const directory = path.dirname(entry);
-		const dependencies = new Set<string>([source]);
+		const dependencies = new Set<string>(body === undefined ? [source] : []);
 		const { build } = await import(viteURL) as typeof vite;
 		const result = await build({
 			configFile: false,
@@ -80,6 +92,13 @@ export class AssetBundles {
 			logLevel: "error",
 			plugins: [{
 				name: "astralhp:bundle-dependencies",
+				enforce: "pre",
+				resolveId(id) {
+					if (body !== undefined && id === source) return source;
+				},
+				load(id) {
+					if (body !== undefined && id === source) return body;
+				},
 				buildEnd() {
 					for (const filename of this.getModuleIds()) {
 						const clean = filename.split("?")[0]!;
@@ -189,6 +208,7 @@ export class AssetBundles {
 						return;
 					}
 					queue = queue.then(async () => {
+						if (event === "unlink" && filename.endsWith(".astro")) this.forgetRemovedBodies(filename);
 						let changed = false;
 						for (const [source, pending] of [...this.bundles]) {
 							if (!(await pending).dependencies.has(filename)) continue;
@@ -219,12 +239,18 @@ export class AssetBundles {
 					if (!id.endsWith(".astro")) return;
 					const scripts = assetReferences(this.webroot, id, code, "JS").assets;
 					const styles = assetReferences(this.webroot, id, code, "CSS").assets;
+					if (server) this.forgetRemovedBodies(id, new Set(scripts.map(reference => reference.source)));
 					if (!scripts.length && !styles.length) return;
 					await queue;
 					const output = new MagicString(code);
 					for (const reference of scripts) {
+						if (reference.body !== undefined && this.bodies.get(reference.source) !== reference.body) {
+							this.bodies.set(reference.source, reference.body);
+							this.bundles.delete(reference.source);
+						}
 						const bundle = await this.bundle(reference.source);
-						output.overwrite(reference.start, reference.end, `{${JSON.stringify(bundle.src)}}`);
+						const src = `{${JSON.stringify(bundle.src)}}`;
+						output.overwrite(reference.start, reference.end, reference.body === undefined ? src : "src=" + src);
 						output.appendLeft(reference.insert, ` __astralhpStyles={${JSON.stringify(bundle.styles)}}`);
 						if (reference.mayInline) {
 							const pathname = bundle.src.split("?")[0]!;

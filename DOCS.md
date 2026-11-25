@@ -26,25 +26,19 @@ routes will be:
 
 These files will be served verbatim, if visited directly.
 
-AstralHP supports Astro's usual ways to include CSS and JS, which process
-them and put them in `http://example.com/_astro/` to be served.
+Astro's usual CSS processing and `<script>` usually emits rearranges files
+and serves them from `http://example.com/_astro/`.
 
-If you would prefer a more PHP-style approach, we offer `<CSS>` and `<JS>`
-components that keep the source file's URL path, changing the extension when
-needed, and add a cachebuster. `<CSS>` serves plain CSS unchanged or compiles
-SCSS; `<JS>` bundles JavaScript or TypeScript and its imports for modern
-browsers.
+If you would prefer an approach that keeps URLs where they were, AstralJS
+offers `<script min src="...">` and `<style src="...">`. These will compile
+TS/Sass, minify and bundle JS, and add cachebusters:
 
 ```astro
----
-import { CSS, JS } from "astralhp/components";
----
-<CSS src="/style.css" />
-<JS src="/js/app.tsx" defer />
+<style src="/style.css"></style>
+<script min src="/js/app.tsx" defer></script>
 ```
 
-`<CSS>` renders a `<link rel="stylesheet">` and `<JS>` renders a
-`<script src>`. Both add a cachebuster based on hashed contents:
+These render to:
 
 ```html
 <link rel="stylesheet" href="/style.css?v=0123456789abcdef">
@@ -55,20 +49,20 @@ The source can be absolute (relative to the webroot) or relative to the Astro
 component:
 
 ```astro
-<CSS src="/style/global.css" />
-<CSS src="style.css" />
-<CSS src="../shared.css" />
+<style src="/style/global.css"></style>
+<style src="style.css"></style>
+<style src="../shared.css"></style>
 ```
 
 The resolved file must be inside the webroot. Missing files, existing queries,
 fragments, and external URLs are errors.
 
-For a `.ts`, `.tsx`, `.js`, or `.jsx` source, `<JS>` builds a bundled and
-minified `.min.js` file, and also builds a corresponding `.min.js.map`
+For a `.ts`, `.tsx`, `.js`, or `.jsx` source, `<script min>` builds a bundled
+and minified `.min.js` file, and also builds a corresponding `.min.js.map`
 source map:
 
 ```astro
-<JS src="script.tsx" />
+<script min src="script.tsx"></script>
 ```
 
 ```html
@@ -79,8 +73,8 @@ Add `inline` to put the compiled contents directly into a `<style>` or
 `<script type="module">`:
 
 ```astro
-<CSS src="/style.scss" inline />
-<JS src="/js/app.ts" inline />
+<style src="/style.scss" inline></style>
+<script min src="/js/app.ts" inline></style>
 ```
 
 ## `.md` and `.mdx` Markdown files
@@ -168,7 +162,7 @@ AstralHP uses a few hidden cache directories:
 - `dev-dist` is a copy of dist used by the `astralhp dev` command
 - `dist/_astro` contains Astro runtime dependencies (stuff like styles, scripts, images)
 - `dist/.server` contains server software for dynamic pages
-- `dist` contains built versions of static pages
+- `dist` contains built versions of static pages and JS
 
 AstralHP interprets the project directory as the directory containing
 `astralhp.mts` or `package.json`. If neither exists, it uses the webroot.
@@ -186,21 +180,13 @@ AstralHP supports compiling all the way down to ES3, for ancient browsers.
 This approach uses Babel and compiles `import` and `export` to no-ops,
 making everything a global.
 
-When doing this, use `<ES3 src="script.tsx" />` for each module you use,
-dependencies first. Unlike `<JS>`, there will be no bundling. We'll
-scan for `<ES3>` and compile each source file to a `.js` file.
-
-```text
-example/
-  script.tsx
-example/.caches/dist/
-  script.js
-  script.js.map
-```
+When doing this, use `<script es3 src="script.tsx"></script>` for each module
+you use, dependencies first. Unlike `<JS>`, there will be no bundling. We'll
+scan for `<script es3>` and compile each source file to a `.js` file.
 
 This Babel configuration is designed to target ancient browsers while
 still letting you write code that looks modern. If you don't care about
-targeting ancient browsers, you're probably better off using `<JS>`
+targeting ancient browsers, you're probably better off using `<script min>`
 instead.
 
 If you do care about targeting ancient browsers, keep in mind:
